@@ -6,7 +6,7 @@ from app.database import sellers_collection
 
 router =APIRouter()
 
-@router.post("auth/login",response_model=LoginResponse)
+@router.post("/auth/login",response_model=LoginRequest)
 def login( request : LoginResponse):
     seller= sellers_collection.find_one({"username":request.username})
     if not seller:
