@@ -11,7 +11,10 @@ db = client["Retail-Return"]
 collections = [
     "products",
     "orders",
-    "returns"
+    "returns",
+    "feedback",
+    "sku",
+    "category"
 ]
 
 for collection in collections:
