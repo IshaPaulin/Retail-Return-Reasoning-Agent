@@ -2,7 +2,7 @@ from fastapi import HTTPException, APIRouter
 from app.models.seller import LoginRequest, LoginResponse
 from app.auth.hashing import verify_password
 from app.auth.jwt import create_token
-from app.database import sellers_collection
+from app.database.connection import sellers_collection
 
 router =APIRouter()
 
