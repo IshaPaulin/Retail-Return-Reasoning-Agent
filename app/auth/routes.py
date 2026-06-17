@@ -6,8 +6,8 @@ from app.database import sellers_collection
 
 router =APIRouter()
 
-@router.post("/auth/login",response_model=LoginRequest)
-def login( request : LoginResponse):
+@router.post("/auth/login",response_model=LoginResponse)
+def login( request : LoginRequest):
     seller= sellers_collection.find_one({"username":request.username})
     if not seller:
         raise HTTPException(status_code=401, detail="Invalid Credentials")
