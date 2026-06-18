@@ -21,7 +21,6 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data" / "synthetic"
 
 sellers_collection = db["sellers"]
-legacy_sellers_collection = db["seller"]
 products_collection = db["products"]
 orders_collection = db["orders"]
 returns_collection = db["returns"]
@@ -47,7 +46,6 @@ def _seed_collection(collection, file_name: str) -> None:
 
 def _ensure_indexes() -> None:
     sellers_collection.create_index([("username", ASCENDING)], unique=True)
-    legacy_sellers_collection.create_index([("username", ASCENDING)], unique=True)
     products_collection.create_index([("seller_id", ASCENDING)])
     products_collection.create_index([("product_id", ASCENDING)])
     orders_collection.create_index([("seller_id", ASCENDING)])

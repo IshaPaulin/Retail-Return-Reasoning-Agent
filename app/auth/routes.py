@@ -2,17 +2,14 @@ from fastapi import APIRouter, HTTPException
 
 from app.auth.hashing import verify_password
 from app.auth.jwt import create_access_token
-from app.database.connection import legacy_sellers_collection, sellers_collection
+from app.database.connection import sellers_collection
 from app.models.seller import LoginRequest, LoginResponse
 
 router = APIRouter()
 
 
 def _find_seller(username: str):
-    seller = sellers_collection.find_one({"username": username})
-    if seller is None:
-        seller = legacy_sellers_collection.find_one({"username": username})
-    return seller
+    return sellers_collection.find_one({"username": username})
 
 @router.post("/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
