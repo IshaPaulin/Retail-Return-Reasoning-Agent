@@ -1,9 +1,9 @@
-from app.database.connection import returns_collection
+from app.database.connection import feedback_collection
 
 
-def get_product_return_data(product_id: str, seller_id: str) -> list:
+def get_customer_feedback(product_id: str, seller_id: str) -> list:
     return list(
-        returns_collection.find(
+        feedback_collection.find(
             {
                 "seller_id": seller_id,
                 "product_id": product_id,
