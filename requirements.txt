@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-pymongo
-python-dotenv
-python-jose[cryptography]
-google-generativeai
-streamlit
