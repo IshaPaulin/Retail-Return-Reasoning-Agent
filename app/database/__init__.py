@@ -1,7 +1,6 @@
 from .connection import (
     client,
     db,
-    initialize_database,
     sellers_collection,
     products_collection,
     orders_collection,

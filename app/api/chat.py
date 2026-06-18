@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+"""from pydantic import BaseModel
 from fastapi import APIRouter, Depends
 
 from app.agent.pipeline import run_chat
@@ -13,4 +13,4 @@ class ChatRequest(BaseModel):
 
 @router.post("")
 def chat(request: ChatRequest, current_seller_id: str = Depends(get_current_seller)):
-    return run_chat(request.query, current_seller_id)
+    return run_chat(request.query, current_seller_id)"""
