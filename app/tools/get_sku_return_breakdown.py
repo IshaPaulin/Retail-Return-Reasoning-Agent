@@ -47,3 +47,7 @@ def get_sku_return_breakdown(product_id: str, seller_id: str) -> list:
             r["variant"] = ""
 
     return results
+
+'''result=get_sku_return_breakdown("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
+for r in result:
+    print(r)'''

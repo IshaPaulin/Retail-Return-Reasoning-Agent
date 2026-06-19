@@ -27,3 +27,7 @@ def get_return_reasons_breakdown(product_id: str, seller_id: str) -> dict:
 
     results = list(returns_collection.aggregate(pipeline))
     return {item["reason"]: item["count"] for item in results}
+
+'''result=get_return_reasons_breakdown("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
+for r in result:
+    print(r)'''

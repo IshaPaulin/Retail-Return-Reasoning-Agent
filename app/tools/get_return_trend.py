@@ -72,3 +72,7 @@ def get_return_trend(seller_id : str, product_id : str) -> dict:
         }
 
 
+'''import json
+result = get_return_trend("6a2fe450e9ea3728609743bf", "6a2fe450e9ea3728609743c4")
+print(json.dumps(result, indent=2))'''
+

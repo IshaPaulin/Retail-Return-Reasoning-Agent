@@ -114,3 +114,7 @@ def _parse_date(value):
         except ValueError:
             continue
     return None
+
+'''result = get_order_delivery_data("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
+for r in result:
+    print(r)'''

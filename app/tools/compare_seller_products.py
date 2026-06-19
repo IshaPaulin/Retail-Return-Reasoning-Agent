@@ -1,60 +1,72 @@
-from app.database.connection import orders_collection, products_collection, returns_collection
+from bson import ObjectId
+from app.database.connection import orders_collection, products_collection, returns_collection, skus_collection
 
 
 def compare_seller_products(seller_id: str) -> list:
+    seller_oid = ObjectId(seller_id)
+
     products = list(
         products_collection.find(
-            {"seller_id": seller_id},
-            {"_id": 0, "product_id": 1, "product_name": 1},
+            {"seller_id": seller_oid},
+            {"_id": 1, "product_name": 1},
         )
     )
-
     if not products:
         return []
 
-    product_ids = [product["product_id"] for product in products if product.get("product_id")]
-    if not product_ids:
+    product_ids = [p["_id"] for p in products]
+
+    # Map sku_id -> product_id
+    skus = list(skus_collection.find(
+        {"product_id": {"$in": product_ids}, "seller_id": seller_oid},
+        {"_id": 1, "product_id": 1}
+    ))
+    sku_to_product = {s["_id"]: s["product_id"] for s in skus}
+    sku_ids = list(sku_to_product.keys())
+
+    if not sku_ids:
         return []
 
-    order_counts = {
-        doc["_id"]: doc["order_count"]
-        for doc in orders_collection.aggregate(
-            [
-                {"$match": {"seller_id": seller_id, "product_id": {"$in": product_ids}}},
-                {"$group": {"_id": "$product_id", "order_count": {"$sum": 1}}},
-            ]
-        )
-    }
+    # Orders grouped by sku_id
+    order_agg = orders_collection.aggregate([
+        {"$match": {"sku_id": {"$in": sku_ids}}},
+        {"$group": {"_id": "$sku_id", "order_count": {"$sum": 1}}},
+    ])
+    order_counts_by_product = {}
+    for doc in order_agg:
+        pid = sku_to_product.get(doc["_id"])
+        if pid:
+            order_counts_by_product[pid] = order_counts_by_product.get(pid, 0) + doc["order_count"]
 
-    return_counts = {
-        doc["_id"]: doc["return_count"]
-        for doc in returns_collection.aggregate(
-            [
-                {"$match": {"seller_id": seller_id, "product_id": {"$in": product_ids}}},
-                {"$group": {"_id": "$product_id", "return_count": {"$sum": 1}}},
-            ]
-        )
-    }
+    # Returns grouped by sku_id
+    return_agg = returns_collection.aggregate([
+        {"$match": {"sku_id": {"$in": sku_ids}}},
+        {"$group": {"_id": "$sku_id", "return_count": {"$sum": 1}}},
+    ])
+    return_counts_by_product = {}
+    for doc in return_agg:
+        pid = sku_to_product.get(doc["_id"])
+        if pid:
+            return_counts_by_product[pid] = return_counts_by_product.get(pid, 0) + doc["return_count"]
 
     results = []
     for product in products:
-        product_id = product.get("product_id")
-        if not product_id:
-            continue
-
-        orders = order_counts.get(product_id, 0)
-        returns = return_counts.get(product_id, 0)
+        pid = product["_id"]
+        orders = order_counts_by_product.get(pid, 0)
+        returns = return_counts_by_product.get(pid, 0)
         return_rate = round((returns / orders) * 100, 2) if orders else 0.0
 
-        results.append(
-            {
-                "product_id": product_id,
-                "product_name": product.get("product_name", product_id),
-                "orders_count": orders,
-                "return_count": returns,
-                "return_rate": return_rate,
-            }
-        )
+        results.append({
+            "product_id": str(pid),
+            "product_name": product.get("product_name", str(pid)),
+            "orders_count": orders,
+            "return_count": returns,
+            "return_rate": return_rate,
+        })
 
     return sorted(results, key=lambda item: item["return_rate"], reverse=True)
 
+
+'''result = compare_seller_products("6a2fe450e9ea3728609743bf")
+for r in result:
+    print(r)'''
