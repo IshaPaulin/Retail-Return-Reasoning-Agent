@@ -57,3 +57,4 @@ def compare_seller_products(seller_id: str) -> list:
         )
 
     return sorted(results, key=lambda item: item["return_rate"], reverse=True)
+

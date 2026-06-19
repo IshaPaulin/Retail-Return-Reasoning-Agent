@@ -15,6 +15,7 @@ db = client["Retail-Return"]
 
 '''
 collections = [
+    "seller",
     "products",
     "orders",
     "returns",
