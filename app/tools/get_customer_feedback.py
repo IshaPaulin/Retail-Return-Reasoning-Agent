@@ -12,3 +12,7 @@ def get_customer_feedback(product_id: str, seller_id: str) -> list:
             {"_id": 0},
         )
     )
+
+'''result = get_customer_feedback("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
+for r in result:
+    print(r)'''

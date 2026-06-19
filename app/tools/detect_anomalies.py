@@ -110,3 +110,5 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
         "anomalies_detected": anomalies_detected,
         "details": details
     }
+
+#print(detect_anomalies("6a2fe450e9ea3728609743c4","6a2fe450e9ea3728609743bf"))
