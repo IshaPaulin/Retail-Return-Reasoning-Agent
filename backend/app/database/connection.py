@@ -1,15 +1,10 @@
 
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-uri = os.getenv("MONGO_URI")
+from app.core.config import MONGO_URI
 
 # Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
+client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
 # Create database
 db = client["Retail-Return"]
 

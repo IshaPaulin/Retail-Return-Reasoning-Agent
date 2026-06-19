@@ -1,13 +1,9 @@
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import os
+from app.core.config import SECRET_KEY
 
-load_dotenv()
-
-SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 EXPIRY_HOURS = 24
 

@@ -92,9 +92,7 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
                     details.append(
                         f"Unexpected Drop in {week}: Recorded {count} returns (Weekly average: {mean_vol:.1f}).")
 
-    # -------------------------------------------------------------------------
-    # PART 2: CATEGORICAL CLUSTER DETECTION (Reason Concentration)
-    # -------------------------------------------------------------------------
+
     CLUSTER_THRESHOLD = 0.55
     for reason, count in reason_counts.items():
         concentration_ratio = count / total_returns
