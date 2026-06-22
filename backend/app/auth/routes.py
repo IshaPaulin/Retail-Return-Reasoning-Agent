@@ -1,8 +1,8 @@
 from fastapi import HTTPException, APIRouter
-from backend.app.models.seller import LoginRequest, LoginResponse
-from backend.app.auth.hashing import verify_password
-from backend.app.auth.jwt import create_token
-from backend.app.database.connection import sellers_collection
+from app.models.seller import LoginRequest, LoginResponse
+from app.auth.hashing import verify_password
+from app.auth.jwt import create_token
+from app.database.connection import sellers_collection
 
 router =APIRouter()
 
