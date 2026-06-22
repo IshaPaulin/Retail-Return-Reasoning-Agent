@@ -1,26 +1,3 @@
-"""
-dashboard_pipeline.py
----------------------
-Two entry points:
-
-  run_dashboard_analysis(product_id, seller_id, product, include_gemini)
-      Per-product card on the landing page.
-      Tools  : detect_anomalies (per card)
-               compare_seller_products result passed in as `product`
-      Gemini : reads raw return records and classifies risk as High/Medium/Low.
-
-  run_product_detail(product_id, seller_id)
-      Full detail page when a seller clicks a card.
-      Tools  : get_product_return_data, get_return_reasons_breakdown,
-               get_customer_feedback, get_return_trend,
-               get_order_delivery_data, detect_anomalies,
-               get_sku_return_breakdown (conditional)
-      Gemini : none — raw structured data returned for frontend to render.
-
-  run_chat(query, seller_id)
-      Delegated to chat_pipeline unchanged.
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,37 +17,12 @@ from app.tools.get_return_trend import get_return_trend
 from app.tools.get_sku_return_breakdown import get_sku_return_breakdown
 
 
-# ---------------------------------------------------------------------------
-# DASHBOARD CARD
-# ---------------------------------------------------------------------------
-
 def run_dashboard_analysis(
     product_id: str,
     seller_id: str,
     product: dict[str, Any] | None = None,
     include_gemini: bool = True,
 ) -> dict[str, Any]:
-    """
-    Produces data for a single product card on the dashboard landing page.
-
-    compare_seller_products is called ONCE at the API level for all products
-    and the matching row is passed in as `product` — so it is never called
-    inside this function.
-
-    Returns:
-        {
-            "product_id":       str,
-            "product_name":     str,
-            "return_rate":      float,
-            "orders_count":     int,
-            "return_count":     int,
-            "avg_rating":       float | None,
-            "anomaly":          bool,
-            "anomaly_message":  str | None,
-            "risk_signal":      "High" | "Medium" | "Low" | "Unknown",
-            "error":            str | None,
-        }
-    """
     result: dict[str, Any] = {
         "product_id":       product_id,
         "product_name":     "Unknown Product",
@@ -114,10 +66,6 @@ def run_dashboard_analysis(
 
 
 def _classify_risk(product_id: str, seller_id: str) -> str:
-    """
-    Fetches raw return records for the product and asks Gemini to classify
-    return risk as High, Medium, or Low based on the actual return history.
-    """
     try:
         return_records = get_product_return_data(product_id, seller_id)
     except Exception:
@@ -155,12 +103,7 @@ def run_product_detail(
     product_id: str,
     seller_id: str,
 ) -> dict[str, Any]:
-    """
-    Runs all detail-page tools. Always returns all 7 section keys.
-    Each section shape:
-        { "available": bool, "data": <section-specific>, "error": str | None }
-    "delivery" also carries a "records" key with raw order docs.
-    """
+    
     detail: dict[str, Any] = {
         "product_id": product_id,
         "overview": {
