@@ -1,20 +1,26 @@
-import google.generativeai as genai
+from google import genai
 from app.core.config import GEMINI_API_KEYS
 
-def generate_response(prompt):
+MODEL = "gemini-2.5-flash"
+
+
+def generate_response(prompt: str) -> str:
+    """
+    Try Gemini API keys one by one.
+    If one key fails, move to the next.
+    """
 
     last_error = None
 
     for api_key in GEMINI_API_KEYS:
 
         try:
-            genai.configure(api_key=api_key)
+            client = genai.Client(api_key=api_key)
 
-            model = genai.GenerativeModel(
-                model_name="gemini-2.5-flash"
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt
             )
-
-            response = model.generate_content(prompt)
 
             return response.text
 
