@@ -70,3 +70,21 @@ def compare_seller_products(seller_id: str) -> list:
 '''result = compare_seller_products("6a2fe450e9ea3728609743bf")
 for r in result:
     print(r)'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
