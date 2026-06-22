@@ -1,5 +1,5 @@
 from bson import ObjectId
-from backend.app.database.connection import skus_collection, returns_collection
+from app.database.connection import skus_collection, returns_collection
 
 def get_return_trend(seller_id : str, product_id : str) -> dict:
     skus=skus_collection.find(
