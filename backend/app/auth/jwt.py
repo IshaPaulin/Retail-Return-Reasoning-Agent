@@ -2,7 +2,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from backend.app.core.config import SECRET_KEY
+from app.core.config import SECRET_KEY
 
 ALGORITHM = "HS256"
 EXPIRY_HOURS = 24

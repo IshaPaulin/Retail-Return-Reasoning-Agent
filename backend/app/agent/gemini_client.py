@@ -1,6 +1,6 @@
 from google import genai
 from google.genai import types
-from backend.app.core.config import GEMINI_API_KEYS
+from app.core.config import GEMINI_API_KEYS
 
 if not GEMINI_API_KEYS:
     raise ValueError("No Gemini API keys found in .env")
