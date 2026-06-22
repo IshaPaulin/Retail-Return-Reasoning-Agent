@@ -1,6 +1,6 @@
 from datetime import datetime
 from bson import ObjectId
-from app.database.connection import orders_collection, skus_collection
+from backend.app.database.connection import orders_collection, skus_collection
 
 # Statuses where delivery duration is meaningful
 DELIVERED_STATUSES = {"delivered", "returned"}

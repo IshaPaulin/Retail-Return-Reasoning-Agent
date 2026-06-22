@@ -2,7 +2,7 @@ import math
 from datetime import datetime
 from bson import ObjectId
 
-from app.database.connection import db
+from backend.app.database.connection import db
 
 
 def detect_anomalies(product_id: str, seller_id: str) -> dict:

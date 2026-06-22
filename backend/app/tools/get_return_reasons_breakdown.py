@@ -1,5 +1,5 @@
 from bson import ObjectId
-from app.database.connection import returns_collection
+from backend.app.database.connection import returns_collection
 
 
 def get_return_reasons_breakdown(product_id: str, seller_id: str) -> dict:

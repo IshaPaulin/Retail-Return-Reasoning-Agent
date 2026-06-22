@@ -1,5 +1,5 @@
 from bson import ObjectId
-from app.database.connection import feedback_collection
+from backend.app.database.connection import feedback_collection
 
 
 def get_customer_feedback(product_id: str, seller_id: str) -> list:

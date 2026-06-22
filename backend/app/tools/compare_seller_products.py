@@ -1,5 +1,5 @@
 from bson import ObjectId
-from app.database.connection import orders_collection, products_collection, returns_collection, skus_collection
+from backend.app.database.connection import orders_collection, products_collection, returns_collection, skus_collection
 
 
 def compare_seller_products(seller_id: str) -> list:
@@ -70,3 +70,21 @@ def compare_seller_products(seller_id: str) -> list:
 '''result = compare_seller_products("6a2fe450e9ea3728609743bf")
 for r in result:
     print(r)'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
