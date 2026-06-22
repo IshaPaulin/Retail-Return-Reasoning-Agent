@@ -116,3 +116,5 @@ def check_scope(query: str) -> dict:
                 "assistant's supported return-analysis scope."
             )
         }
+    
+    
