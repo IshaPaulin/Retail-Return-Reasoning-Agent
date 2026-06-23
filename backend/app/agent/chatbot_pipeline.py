@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
 from app.database.connection import db, client
-from app.agent.scope_check import is_in_scope
+from app.agent.scope_check import check_scope
 from app.agent.gemini_client import generate_with_tools, generate_simple
 from app.agent.response_scorer import score_response
 from app.tools import (
@@ -46,6 +46,7 @@ TOOL_REGISTRY = {
 
 class AgentState(MessagesState):
     seller_id: str
+    scope_passed: bool = True   
 
 
 # ---------------------------------------------------------------------------
@@ -59,15 +60,12 @@ def scope_check_node(state: AgentState) -> dict:
          if isinstance(m, HumanMessage)), ""
     )
 
-    if not is_in_scope(user_message):
+    scope_result = check_scope(user_message)
+    if not scope_result["allowed"]:
         return {
-            "messages": [AIMessage(content=(
-                "I can only assist with return, product, order, "
-                "and feedback related questions."
-            ))],
-            "scope_passed": False
+            "messages": [AIMessage(content=scope_result["message"])],
+            "scope_passed": False,
         }
-
     return {"scope_passed": True}
 
 
@@ -82,9 +80,30 @@ def scope_check_router(state: AgentState) -> str:
 # Unchanged from original design.
 # ---------------------------------------------------------------------------
 
+
 def agent_node(state: AgentState) -> dict:
     response = generate_with_tools(state["messages"], ALL_TOOL_SCHEMAS)
-    return {"messages": [response]}
+
+    candidate = response.candidates[0]
+    parts = candidate.content.parts if candidate.content and candidate.content.parts else []
+
+    tool_calls = []
+    text_parts = []
+
+    for part in parts:
+        if part.function_call:
+            tool_calls.append({
+                "name": part.function_call.name,
+                "args": dict(part.function_call.args),
+                "id":   part.function_call.name,
+            })
+        elif part.text:
+            text_parts.append(part.text)
+
+    return {"messages": [AIMessage(
+        content="".join(text_parts),
+        tool_calls=tool_calls,
+    )]}
 
 
 def agent_router(state: AgentState) -> str:
@@ -132,7 +151,8 @@ def tool_node(state: AgentState) -> dict:
         tool_results.append(
             ToolMessage(
                 content=str(result),
-                tool_call_id=tool_call["id"]
+                tool_call_id=tool_call["id"],
+                name=tool_name, 
             )
         )
 
@@ -271,8 +291,8 @@ builder.add_edge("scorer", END)
 
 graph = builder.compile(
     checkpointer=checkpointer,
-    recursion_limit=10  # MAX_TOOL_CALLS safety cap
 )
+
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +307,11 @@ def run_chat(user_message: str, seller_id: str) -> str:
     }
 
     config = {
-        "configurable": {
-            "thread_id": seller_id  # persistent per-seller conversation history
-        }
-    }
-
+    "configurable": {
+        "thread_id": seller_id
+    },
+    "recursion_limit": 10
+}
     result = graph.invoke(initial_state, config=config)
 
     # Extract final text response from last AIMessage

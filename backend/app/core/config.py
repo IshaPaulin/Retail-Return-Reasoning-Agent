@@ -13,6 +13,7 @@ GEMINI_API_KEYS = [
     os.getenv("GEMINI_API_KEY_4"),
     os.getenv("GEMINI_API_KEY_5"),
     os.getenv("GEMINI_API_KEY_6"),
+    os.getenv("GEMINI_API_KEY_7"),
 ]
 
 GEMINI_API_KEYS = [k for k in GEMINI_API_KEYS if k]
