@@ -5,7 +5,7 @@ from langgraph.graph.message import MessagesState
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
+from app.core.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
 from app.database.connection import db, client
 from app.agent.scope_check import is_in_scope
 from app.agent.gemini_client import generate_with_tools, generate_simple
@@ -20,7 +20,7 @@ from app.tools import (
     detect_anomalies,
     get_sku_return_breakdown,
 )
-from app.tools.schemas import ALL_TOOL_SCHEMAS
+from app.agent.tool_schemas import ALL_TOOL_SCHEMAS
 
 # ---------------------------------------------------------------------------
 # TOOL REGISTRY
