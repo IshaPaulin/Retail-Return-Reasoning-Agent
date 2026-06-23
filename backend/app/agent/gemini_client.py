@@ -7,10 +7,32 @@ if not GEMINI_API_KEYS:
 
 MODEL="gemini-2.5-flash"
 
-_current_key_index = 0
+def get_client():
+    """
+    Returns a working Gemini client.
+    Tries API keys one by one until one succeeds.
+    """
+    last_error = None
 
-def get_client() -> genai.Client:
-    return genai.Client(api_key=GEMINI_API_KEYS[_current_key_index])
+    for api_key in GEMINI_API_KEYS:
+        try:
+            client = genai.Client(api_key=api_key)
+
+            # Lightweight validation call
+            client.models.generate_content(
+                model=MODEL,
+                contents="ping"
+            )
+
+            return client
+
+        except Exception as e:
+            print(f"Gemini key failed: {api_key[:10]}...")
+            last_error = e
+
+    raise Exception(
+        f"All Gemini API keys failed. Last error: {last_error}"
+    )
 
 def generate_simple(prompt: str) -> str:
     client=get_client()
