@@ -253,7 +253,7 @@ Rules for your retry:
 
         disclaimer = (
             f"\n\n---\n"
-            f"Note: This response could not be fully verified against "
+            f"Note: This response could not be fully verified against your return data "
             f"The answer above may be incomplete or insufficiently grounded. "
             f"Please try rephrasing your question"
         )
