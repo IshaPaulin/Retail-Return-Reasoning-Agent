@@ -1,123 +1,45 @@
 from app.agent.gemini_client import generate_simple
+#imports the function generate_simple from gemini_client.py
 
-
-# =====================================================
-# GREETINGS
-# =====================================================
-
-GREETINGS = {
-    "hi",
-    "hello",
-    "hey",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "greetings"
-}
-
-
-# =====================================================
-# BOUNDARY CLASSIFIER PROMPT
-# =====================================================
-
+#Assign a role to the llm and it checks if the user's query is within the scope or out of the scope.
 SCOPE_CHECK_PROMPT = """
-SYSTEM ROLE
+You are a scope classifier for a retail seller's returns-analysis assistant.
 
-You are a Security and Boundary Enforcement Classifier for a Retail Return Reasoning Agent.
+The assistant's PURPOSE is to help sellers understand and act on product return data —
+patterns, root causes, trends, comparisons, refund amounts, and recommendations tied to
+their own store's returns, orders, SKUs, and customer feedback.
 
-You are NOT a chatbot.
-You are NOT a data analyst.
-You are NOT allowed to answer the user's question.
+IN_SCOPE includes (non-exhaustive — reason by purpose, not exact wording):
+- Return patterns, reasons, trends, and root causes
+- Refund amounts and financial impact caused by returns
+- Comparing return rates or return-related metrics across products or SKUs
+- Customer feedback or ratings tied to product returns
+- Order and delivery timing as it relates to return causes
+- Return anomalies, spikes, or unusual patterns
+- Return-related recommendations and seller insights
 
-Your ONLY responsibility is to determine whether the user's request
-falls within the assistant's authorized operating boundary.
-
---------------------------------------------------
-AUTHORIZED DATA BOUNDARY
---------------------------------------------------
-
-The assistant may access and reason about:
-
-AUTHENTICATED SELLER DATA:
-- Product return records
-- Return reasons
-- Return trends
-- Return root-cause analysis
-- Refund amounts caused by returns
-- Return-related financial impact
-- Customer feedback related to returns
-- SKU-level return analysis
-- Product comparisons based on return metrics
-- Order-delivery issues related to returns
-- Return anomalies and unusual patterns
-
-PUBLIC BENCHMARK DATA (when available through authorized sources):
-- Industry return-rate benchmarks
-- Sector-level return averages
-- Marketplace-wide return statistics
-- Public retail return studies and trends
-
-The assistant may generate recommendations ONLY when they are
-grounded in authorized data sources.
-
---------------------------------------------------
-UNAUTHORIZED DATA BOUNDARY
---------------------------------------------------
-
-The assistant must NOT answer questions requiring:
-
-Business Analytics Unrelated to Returns:
-- Total revenue
-- Total sales
-- Profit margins
-- Inventory levels
-- Marketing performance
-- Forecasting
-- Warehouse operations
-
-Private or Restricted Data:
-- Other sellers' private data
-- Competitor proprietary information
-- Confidential marketplace data
-- Internal company information not available through authorized sources
-
-General Knowledge:
+OUT_OF_SCOPE includes:
+- General business metrics not tied to returns
+  (total revenue, sales, profit margin, inventory levels,
+   marketing performance, forecasting, warehouse operations)
+- Requests about other sellers' data
+- Industry-wide statistics not derived from the authenticated seller's data
+- General knowledge questions
 - Coding help
-- Mathematics
-- Science
-- Politics
-- Weather
-- Sports
-- Entertainment
 - Personal advice
-- Any topic unrelated to retail returns
+- Entertainment, sports, politics, weather, or unrelated topics
 
---------------------------------------------------
-DECISION POLICY
---------------------------------------------------
+The distinguishing test:
 
-Classify as IN_SCOPE only if ALL conditions are true:
+If the query can reasonably be answered using return records,
+refund data, SKU return data, order-return correlations,
+customer feedback, or return-related analytics,
+classify it as IN_SCOPE.
 
-1. The request is related to returns, refunds, return trends,
-   return causes, return-related customer feedback,
-   return-related financial impact, SKU return analysis,
-   product return comparisons, delivery-return correlations,
-   or return anomalies.
+If answering the query would require information outside those domains,
+classify it as OUT_OF_SCOPE.
 
-2. The request can be answered using:
-   - authenticated seller return-related data, OR
-   - authorized public benchmark data.
-
-3. No private, unauthorized, competitor-specific,
-   or unrelated information is required.
-
-Otherwise classify as OUT_OF_SCOPE.
-
---------------------------------------------------
-OUTPUT POLICY
---------------------------------------------------
-
-Return EXACTLY ONE WORD:
+Respond with EXACTLY ONE WORD:
 
 IN_SCOPE
 
@@ -125,25 +47,17 @@ or
 
 OUT_OF_SCOPE
 
-Do not explain.
-Do not provide reasoning.
-Do not answer the question.
-
-User Query:
+User query:
 {query}
 """
 
-
-# =====================================================
-# MAIN FUNCTION
-# =====================================================
-
 def check_scope(query: str) -> dict:
     """
-    Determines whether a query falls within the
-    Retail Return Reasoning Agent's authorized boundary.
+    Classifies whether a query is within the
+    Retail Return Reasoning Agent's scope.
 
     Returns:
+    --------
     {
         "allowed": bool,
         "classification": str,
@@ -151,78 +65,56 @@ def check_scope(query: str) -> dict:
     }
     """
 
-    # ----------------------------------
-    # Empty Query
-    # ----------------------------------
-
-    if not query or not query.strip():
+    # Reject empty queries
+    if not query or not query.strip(): #query.strip() removes extra spaces;this line checks if its an empty query
         return {
-            "allowed": False,
+            "allowed": False, #do not continue
             "classification": "OUT_OF_SCOPE",
             "message": (
-                "Please enter a return-related question."
+                "Please enter a question related to product returns, "
+                "return reasons, customer feedback, return trends, "
+                "SKU analysis, product comparisons, or return anomalies."
             )
         }
-
-    query_clean = query.strip()
-    query_lower = query_clean.lower()
-
-    # ----------------------------------
-    # Greeting Detection
-    # ----------------------------------
-
-    if query_lower in GREETINGS:
-        return {
-            "allowed": False,
-            "classification": "GREETING",
-            "message": (
-                "Hello! I can help you analyze return reasons, "
-                "return trends, customer feedback, refund impact, "
-                "SKU performance, product comparisons, and return anomalies."
-            )
-        }
-
-    # ----------------------------------
-    # Boundary Classification
-    # ----------------------------------
 
     try:
-
         prompt = SCOPE_CHECK_PROMPT.format(
-            query=query_clean
-        )
-
+            query=query.strip()
+        ) #pass this to User Query in SCOPE_CHECK_PROMPT [THE BIG PROMPT]
+        #print(prompt) would print entire user query+the big prompt
         response = generate_simple(prompt)
-
-        classification = response.strip().upper()
-
-        # Fail Closed
-        if classification == "IN_SCOPE":
+        #gemini receives the prompt--thinks--and returns in_scope or out_of_scope
+        result = response.strip().upper()#either IN_SCOPE or OUT_OF_SCOPE
+        # Only accept an exact IN_SCOPE.
+        # Everything else is rejected.
+        if result == "IN_SCOPE":
             return {
                 "allowed": True,
                 "classification": "IN_SCOPE",
                 "message": ""
-            }
+            } #continue to tool calling
 
+        return {
+            "allowed": False, #Fail Closed
+            "classification": "OUT_OF_SCOPE",
+            "message": (
+                "I can only assist with return-related analysis, including "
+                "return reasons, return trends, refund impact, customer feedback, "
+                "SKU return analysis, product comparisons, delivery-return correlations, "
+                "and anomaly detection."
+            )
+        }
+
+    except Exception: #built in python class to catch any general errors
+        # Fail closed.
+        # Better to reject than risk hallucination.
         return {
             "allowed": False,
             "classification": "OUT_OF_SCOPE",
             "message": (
-                "I can only assist with return-related analysis "
-                "for your store, including return reasons, return trends, "
-                "refund impact, customer feedback, SKU analysis, "
-                "product comparisons, delivery-return correlations, "
-                "return anomalies, and benchmark comparisons."
+                "Unable to verify whether the request falls within the "
+                "assistant's supported return-analysis scope."
             )
         }
-
-    except Exception:
-
-        return {
-            "allowed": False,
-            "classification": "OUT_OF_SCOPE",
-            "message": (
-                "Unable to verify whether the request falls "
-                "within the assistant's authorized scope."
-            )
-        }
+    
+    
