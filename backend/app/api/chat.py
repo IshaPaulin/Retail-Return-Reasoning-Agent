@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth.jwt import validate_token
-from app.agent.chatbot_pipeline import run_chat
+from app.agent.chat_pipeline import run_chat
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -14,7 +14,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # ---------------------------------------------------------------------------
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="The seller's natural language query.")
+    message: str = Field(..., min_length=1,
+                         description="The seller's natural language query.")
 
 
 class ChatResponse(BaseModel):
