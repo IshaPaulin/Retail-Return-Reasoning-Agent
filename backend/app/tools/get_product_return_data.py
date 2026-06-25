@@ -24,6 +24,6 @@ def get_product_return_data(product_id: str, seller_id: str) -> list:
     ]
     return list(returns_collection.aggregate(pipeline))
 
-'''result=get_product_return_data("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
+result=get_product_return_data("6a2fe450e9ea3728609743c4", "6a2fe450e9ea3728609743bf")
 for r in result:
-    print(r)'''
+    print(r)

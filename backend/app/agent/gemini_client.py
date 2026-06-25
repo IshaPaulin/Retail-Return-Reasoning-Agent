@@ -30,15 +30,21 @@ def convert_messages(contents: list) -> list[types.Content]:
         AIMessage     → "model"
         ToolMessage   → "user"  (tool results sent back as user turn)
         SystemMessage → "user"  (Gemini has no system role in contents)
+
+    Empty content parts are skipped — Gemini rejects empty text Parts
+    with "file uri and mime_type are required".
     """
     gemini_contents = []
 
     for msg in contents:
         if isinstance(msg, HumanMessage):
+            content = str(msg.content).strip()
+            if not content:
+                continue
             gemini_contents.append(
                 types.Content(
                     role="user",
-                    parts=[types.Part(text=str(msg.content))],
+                    parts=[types.Part(text=content)],
                 )
             )
 
@@ -58,10 +64,13 @@ def convert_messages(contents: list) -> list[types.Content]:
                     types.Content(role="model", parts=parts)
                 )
             else:
+                content = str(msg.content).strip()
+                if not content:
+                    continue
                 gemini_contents.append(
                     types.Content(
                         role="model",
-                        parts=[types.Part(text=str(msg.content))],
+                        parts=[types.Part(text=content)],
                     )
                 )
 
@@ -82,18 +91,24 @@ def convert_messages(contents: list) -> list[types.Content]:
             )
 
         elif isinstance(msg, SystemMessage):
+            content = str(msg.content).strip()
+            if not content:
+                continue
             gemini_contents.append(
                 types.Content(
                     role="user",
-                    parts=[types.Part(text=str(msg.content))],
+                    parts=[types.Part(text=content)],
                 )
             )
 
         else:
+            content = str(msg.content).strip()
+            if not content:
+                continue
             gemini_contents.append(
                 types.Content(
                     role="user",
-                    parts=[types.Part(text=str(msg.content))],
+                    parts=[types.Part(text=content)],
                 )
             )
 

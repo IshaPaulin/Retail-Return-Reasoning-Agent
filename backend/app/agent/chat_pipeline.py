@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.core.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
 from app.agent.scope_check import check_scope
-from app.agent.gemini_client import generate_with_tools, generate_simple
+from app.agent.gemini_client import generate_with_tools, convert_messages
 from app.tools import (
     get_product_return_data,
     get_return_reasons_breakdown,
@@ -76,6 +76,7 @@ def scope_check_router(state: AgentState) -> str:
 # ---------------------------------------------------------------------------
 
 def agent_node(state: AgentState) -> dict:
+    gemini_contents = convert_messages(state["messages"]) 
     response = generate_with_tools(state["messages"], ALL_TOOL_SCHEMAS)
 
     candidate = response.candidates[0]

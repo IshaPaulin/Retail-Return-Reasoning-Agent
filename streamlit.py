@@ -294,8 +294,7 @@ with st.form("chat_form", clear_on_submit=True):
         chat_text = chat_text.strip()
         if chat_text:
             chat_payload = {
-                "query": chat_text,
-                "conversation_id": st.session_state.chat_conversation_id,
+                "message": chat_text,
             }
             response_data, response_error = api_request(
                 base_url,
