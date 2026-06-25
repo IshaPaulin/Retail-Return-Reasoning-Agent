@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from statistics import mean
 from typing import Any
+from bson import ObjectId
 
 from app.agent.gemini_client import generate_json
 from app.database.connection import (
@@ -14,7 +15,6 @@ from app.database.connection import (
     returns_collection,
     skus_collection,
 )
-from app.tools._mongo_helpers import to_object_id
 from app.tools.detect_anomalies import detect_anomalies
 from app.tools.get_product_return_data import get_product_return_data
 from app.tools.get_customer_feedback import get_customer_feedback
@@ -99,14 +99,8 @@ def _parse_date(value: Any) -> datetime | None:
                 continue
     return None
 
-
-def _seller_key(seller_id: str):
-    return to_object_id(seller_id)
-
-
 def _product_doc(product_id: str) -> dict[str, Any] | None:
-    return products_collection.find_one({"_id": to_object_id(product_id)})
-
+    return products_collection.find_one({"_id": ObjectId(product_id)})
 
 def _product_name(product: dict[str, Any] | None, product_id: str) -> str:
     if not product:
@@ -121,7 +115,7 @@ def _product_name(product: dict[str, Any] | None, product_id: str) -> str:
 def _sku_docs_for_product(product_id: str, seller_id: str) -> list[dict[str, Any]]:
     return list(
         skus_collection.find(
-            {"seller_id": _seller_key(seller_id), "product_id": to_object_id(product_id)},
+            {"seller_id": ObjectId(seller_id), "product_id": ObjectId(product_id)},
             {"_id": 1, "sku_code": 1, "variant_attributes": 1, "price": 1},
         )
     )
