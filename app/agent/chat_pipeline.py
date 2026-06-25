@@ -14,13 +14,15 @@ from app.database.connection import products_collection
 from app.tools.compare_seller_products import compare_seller_products
 from app.tools.detect_anomalies import detect_anomalies
 from app.tools.get_customer_feedback import get_customer_feedback
+from app.tools.get_order_delivery import get_order_delivery_data
 from app.tools.get_product_return_data import get_product_return_data
 from app.tools.get_return_reasons_breakdown import get_return_reasons_breakdown
 from app.tools.get_sku_return_breakdown import get_sku_return_breakdown
+from app.tools.return_trend import get_return_trend
 from app.tools._mongo_helpers import json_safe, to_object_id
 
 
-MAX_TOOL_ROUNDS = 2
+MAX_TOOL_ROUNDS = 3  # allow up to three tool rounds before forcing synthesis
 
 # ---------------------------------------------------------------------------
 # Role definition — single source of truth for what this agent is and isn't.
@@ -147,6 +149,18 @@ def _tool_anomalies(seller_id: str, product_id: str | None, query: str) -> Any:
     return detect_anomalies(product_id, seller_id)
 
 
+def _tool_return_trend(seller_id: str, product_id: str | None, query: str) -> Any:
+    if not product_id:
+        return {"error": "product_id is required"}
+    return get_return_trend(seller_id, product_id)
+
+
+def _tool_order_delivery(seller_id: str, product_id: str | None, query: str) -> Any:
+    if not product_id:
+        return {"error": "product_id is required"}
+    return get_order_delivery_data(product_id, seller_id)
+
+
 def _tool_compare_products(seller_id: str, product_id: str | None, query: str) -> Any:
     return compare_seller_products(seller_id)
 
@@ -181,6 +195,18 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         description="Find spikes in product returns over time.",
         requires_product_id=True,
         handler=_tool_anomalies,
+    ),
+    "get_return_trend": ToolSpec(
+        name="get_return_trend",
+        description="Fetch product return trend history and monthly return reasons for one product.",
+        requires_product_id=True,
+        handler=_tool_return_trend,
+    ),
+    "get_order_delivery_data": ToolSpec(
+        name="get_order_delivery_data",
+        description="Fetch order delivery performance for one product, including delivery duration and fulfillment status.",
+        requires_product_id=True,
+        handler=_tool_order_delivery,
     ),
     "compare_seller_products": ToolSpec(
         name="compare_seller_products",
@@ -277,189 +303,6 @@ def _summarize_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str
     return compact
 
 
-def _is_data_query(query_lower: str) -> bool:
-    return any(
-        token in query_lower
-        for token in (
-            "compare",
-            "versus",
-            " vs ",
-            " vs.",
-            "difference",
-            "diff",
-            "return",
-            "returns",
-            "rate",
-            "revenue",
-            "reasons",
-            "feedback",
-            "sku",
-            "anomaly",
-            "anomalies",
-        )
-    )
-
-
-def _normalize_tokens(text: str) -> set[str]:
-    return set(re.findall(r"\w+", (text or "").lower()))
-
-
-def _query_matches_name(query_lower: str, name: str) -> bool:
-    name_tokens = _normalize_tokens(name)
-    if not name_tokens:
-        return False
-    return name_tokens.issubset(_normalize_tokens(query_lower))
-
-
-def _rank_tools_for_query(query_lower: str, product_id: str | None) -> list[str]:
-    query_tokens = _normalize_tokens(query_lower)
-    scores: list[tuple[int, str]] = []
-
-    for tool_name, spec in TOOL_REGISTRY.items():
-        if spec.requires_product_id and not product_id:
-            continue
-
-        description_tokens = _normalize_tokens(spec.description.replace("_", " ") + " " + spec.name)
-        score = len(description_tokens & query_tokens)
-
-        if tool_name == "compare_seller_products" and any(k in query_lower for k in ("compare", "versus", "difference", "diff", " vs ", " vs.")):
-            score += 4
-        if tool_name == "get_product_return_data" and product_id:
-            score += 2
-
-        scores.append((score, tool_name))
-
-    selected = [tool for score, tool in sorted(scores, key=lambda item: (item[0], item[1]), reverse=True) if score > 0]
-    return selected[:3]
-
-
-def _find_mentioned_products(query_lower: str, seller_id: str, limit: int = 5) -> list[dict[str, str]]:
-    products = list(
-        products_collection.find(
-            {"seller_id": to_object_id(seller_id)},
-            {"_id": 1, "product_name": 1, "name": 1},
-        )
-    )
-    matches: list[dict[str, str]] = []
-    for product in products:
-        name = product.get("product_name") or product.get("name") or ""
-        if _query_matches_name(query_lower, name):
-            matches.append(
-                {
-                    "product_id": str(product["_id"]),
-                    "product_name": name,
-                    "match_count": len(_normalize_tokens(name)),
-                }
-            )
-    return sorted(matches, key=lambda item: (item["match_count"], item["product_name"]), reverse=True)[:limit]
-
-
-def _get_product_name(product_id: str, seller_id: str) -> str:
-    product = products_collection.find_one(
-        {"_id": to_object_id(product_id), "seller_id": to_object_id(seller_id)},
-        {"product_name": 1, "name": 1},
-    )
-    if not product:
-        return product_id
-    return product.get("product_name") or product.get("name") or product_id
-
-
-def _build_compare_response(query: str, tool_results: list[dict[str, Any]], seller_id: str) -> str:
-    compare_tool = next((item for item in tool_results if item.get("tool") == "compare_seller_products"), None)
-    if not compare_tool:
-        return ""
-
-    output = _parse_tool_output(compare_tool.get("output"))
-    if not isinstance(output, list) or not output:
-        return _fallback_tool_summary(tool_results)
-
-    query_lower = query.lower()
-    mentions = _find_mentioned_products(query_lower, seller_id)
-    lines: list[str] = []
-
-    if mentions:
-        for mention in mentions:
-            row = next(
-                (
-                    r
-                    for r in output
-                    if r.get("product_name", "").lower() == mention["product_name"].lower()
-                    or r.get("product_id") == mention["product_id"]
-                ),
-                None,
-            )
-            if row:
-                lines.append(f"{row.get('product_name')}: {row.get('return_count', 0)} returns")
-
-    if lines:
-        return "Here are the return counts for the products mentioned in your question:\n" + "\n".join(f"- {line}" for line in lines)
-
-    top = sorted(output, key=lambda x: x.get("return_count", 0), reverse=True)[:3]
-    if top:
-        return "Here are the top returning products for your seller:\n" + "\n".join(
-            f"- {row.get('product_name')}: {row.get('return_count', 0)} returns" for row in top
-        )
-
-    return "No seller return counts are available."
-
-
-def _build_product_response(query: str, tool_results: list[dict[str, Any]], seller_id: str, product_id: str) -> str:
-    product_name = _get_product_name(product_id, seller_id)
-    pieces: list[str] = []
-
-    reasons_item = next((item for item in tool_results if item.get("tool") == "get_return_reasons_breakdown"), None)
-    sku_item = next((item for item in tool_results if item.get("tool") == "get_sku_return_breakdown"), None)
-    feedback_item = next((item for item in tool_results if item.get("tool") == "get_customer_feedback"), None)
-    anomalies_item = next((item for item in tool_results if item.get("tool") == "detect_anomalies"), None)
-    raw_item = next((item for item in tool_results if item.get("tool") == "get_product_return_data"), None)
-
-    if reasons_item:
-        output = _parse_tool_output(reasons_item.get("output"))
-        if isinstance(output, dict) and output:
-            pieces.append(f"For {product_name}, the top return reasons are:")
-            for reason, count in sorted(output.items(), key=lambda x: x[1], reverse=True)[:3]:
-                pieces.append(f"- {reason}: {count}")
-
-    if sku_item:
-        output = _parse_tool_output(sku_item.get("output"))
-        if isinstance(output, list) and output:
-            pieces.append("Top returned SKUs or variants are:")
-            for row in output[:3]:
-                pieces.append(
-                    f"- {row.get('variant') or row.get('sku_id', 'sku')}: {row.get('return_count', 0)} returns"
-                )
-
-    if feedback_item:
-        output = _parse_tool_output(feedback_item.get("output"))
-        if isinstance(output, list) and output:
-            pieces.append(f"Found {len(output)} customer feedback items that relate to {product_name}.")
-
-    if anomalies_item:
-        output = _parse_tool_output(anomalies_item.get("output"))
-        if output:
-            pieces.append("Anomaly detection found potential issues in recent return activity for this product.")
-
-    if not pieces and raw_item:
-        output = _parse_tool_output(raw_item.get("output"))
-        if isinstance(output, list):
-            pieces.append(f"{product_name} has {len(output)} return records available for analysis.")
-
-    if pieces:
-        return " ".join(pieces)
-    return _fallback_tool_summary(tool_results)
-
-
-def _build_tool_response(query: str, tool_results: list[dict[str, Any]], seller_id: str, product_id: str | None) -> str:
-    query_lower = query.lower()
-    if any(x in query_lower for x in ("compare", "versus", " vs ", " vs.", "difference", "diff")):
-        response = _build_compare_response(query, tool_results, seller_id)
-        if response:
-            return response
-    if product_id:
-        response = _build_product_response(query, tool_results, seller_id, product_id)
-        if response:
-            return response
-    return _fallback_tool_summary(tool_results)
 
 
 def _assistant_prompt(query: str, tool_results: list[dict[str, Any]]) -> str:
@@ -485,11 +328,22 @@ def _route_prompt(state: ChatState) -> str:
 
 You are routing a retail seller chat agent.
 
-Choose the next node and the tools only from the tool catalog.
-Prefer fallback_node when the user only needs a general answer and no live data.
-Prefer tool_node when fresh seller data is needed.
-Use synthesis_node after you have enough evidence from tools.
-If a product-specific question needs a product but none is clear, ask a short clarification.
+Choose the next node and tools only from the tool catalog.
+Prefer fallback_node when the user is asking for general analytics advice, explanation, or a high-level answer that does not require fresh seller dashboard data.
+Prefer tool_node when the question requires live seller data to answer accurately.
+Use synthesis_node after the selected tool evidence has been gathered.
+Choose compare_seller_products only for seller-wide comparisons, rankings, or questions that require evaluating multiple products together.
+Choose product-specific tools only when the query is about one identifiable product and a valid product_id is available or can be resolved.
+If the query is product-specific but no product can be resolved, ask a short clarification instead of selecting product tools.
+If the query is about seller-level trends or overall performance without a single product, compare_seller_products is preferred.
+When multiple tools are useful, select the smallest set needed to answer the question.
+
+Examples:
+- "Why are customers returning product X?" → tool_node with get_return_reasons_breakdown or get_product_return_data.
+- "Which product has the highest return count?" → compare_seller_products.
+- "Show me the top returned SKUs for product X." → get_sku_return_breakdown.
+- "How can I reduce returns across my catalog?" → fallback_node or compare_seller_products if seller-wide data is needed.
+- "Is delivery causing returns for product X?" → get_order_delivery_data and get_return_reasons_breakdown.
 
 Return valid JSON only with keys:
 - next_node: one of ["tool_node", "fallback_node", "synthesis_node", "final_node"]
@@ -617,27 +471,36 @@ def route_node(state: ChatState) -> Command:
     clarify_question = route_result.get("clarify_question", "")
 
     query_lower = query.lower()
-    is_compare_query = any(x in query_lower for x in ("compare", "versus", " vs ", " vs.", "difference", "diff"))
-    is_data_query = bool(product_id) or is_compare_query or _is_data_query(query_lower)
-
-    if next_node == "fallback_node" and not tool_results and is_data_query:
-        next_node = "tool_node"
-
-    if next_node == "final_node" and not clarify_question and is_data_query:
-        next_node = "tool_node"
 
     if tool_rounds >= MAX_TOOL_ROUNDS and next_node == "tool_node":
         next_node = "synthesis_node"
 
     if next_node == "tool_node":
         if not selected_tools:
-            selected_tools = _rank_tools_for_query(query_lower, product_id)
-            if not selected_tools:
-                selected_tools = ["compare_seller_products"] if not product_id else ["get_product_return_data"]
+            if product_id:
+                selected_tools = ["get_product_return_data"]
+            else:
+                next_node = "fallback_node"
 
         selected_tools = [tool for tool in selected_tools if tool in TOOL_REGISTRY]
+
         if product_id is None:
+            product_specific = [tool for tool in selected_tools if TOOL_REGISTRY[tool].requires_product_id]
+            if product_specific:
+                return Command(
+                    goto="final_node",
+                    update={
+                        "intent": "clarification",
+                        "final_response": (
+                            "I need a specific product to run that analysis. "
+                            "Which product are you asking about?"
+                        ),
+                        "confidence": "medium",
+                        "tools_used": [],
+                    },
+                )
             selected_tools = [tool for tool in selected_tools if not TOOL_REGISTRY[tool].requires_product_id]
+
         if not selected_tools:
             next_node = "fallback_node"
 
@@ -721,7 +584,7 @@ def _parse_tool_output(output: Any) -> Any:
     return output
 
 
-def _fallback_tool_summary(tool_results: list[dict[str, Any]]) -> str:
+def _structured_tool_summary(tool_results: list[dict[str, Any]]) -> str:
     pieces: list[str] = []
     for item in tool_results:
         tool = item.get("tool")
@@ -768,6 +631,24 @@ def _fallback_tool_summary(tool_results: list[dict[str, Any]]) -> str:
             else:
                 pieces.append("No SKU return breakdown available.")
 
+        elif tool == "get_return_trend":
+            if isinstance(output, dict) and output.get("has_data") and isinstance(output.get("trend"), list):
+                pieces.append("Return trend for this product:")
+                for r in output.get("trend", [])[-3:]:
+                    pieces.append(f"- {r.get('period')}: {r.get('return_count', 0)} returns")
+            else:
+                pieces.append("No product return trend data available.")
+
+        elif tool == "get_order_delivery_data":
+            if isinstance(output, list) and output:
+                delivered = [r for r in output if isinstance(r.get("delivery_duration_days"), (int, float))]
+                if delivered:
+                    avg_duration = sum(r["delivery_duration_days"] for r in delivered if r.get("delivery_duration_days") is not None) / len(delivered)
+                    pieces.append(f"Average delivery duration: {round(avg_duration, 1)} days across {len(delivered)} delivered orders.")
+                pieces.append(f"Found {len(output)} order delivery records.")
+            else:
+                pieces.append("No order delivery data was found for this product.")
+
         elif tool == "detect_anomalies":
             if output:
                 pieces.append("Anomaly detection returned evidence.")
@@ -803,21 +684,13 @@ def _is_weak_response(text: str) -> bool:
 def synthesis_node(state: ChatState) -> dict[str, Any]:
     query = state.get("query", "")
     tool_results = state.get("tool_results", [])
-    product_id = state.get("product_id")
-    if tool_results:
-        response = _build_tool_response(query, tool_results, state.get("seller_id", ""), product_id)
-        if response:
-            return {
-                "final_response": response,
-                "confidence": "high",
-            }
     prompt = _assistant_prompt(query, tool_results)
     response = generate_text(
         prompt,
         system_instruction="You are a grounded retail analyst. Use only the provided tool evidence. If evidence is incomplete, ask for the smallest useful follow-up.",
     )
     if tool_results and (_is_weak_response(response) or not response):
-        response = _fallback_tool_summary(tool_results)
+        response = _structured_tool_summary(tool_results)
     if not response:
         response = "I have some evidence, but it is not enough to give a confident answer yet."
     return {
