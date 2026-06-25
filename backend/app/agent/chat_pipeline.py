@@ -7,7 +7,6 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.core.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
 from app.agent.scope_check import check_scope
 from app.agent.gemini_client import generate_with_tools, generate_simple
-from app.agent.dashboard_scoring import score_response
 from app.tools import (
     get_product_return_data,
     get_return_reasons_breakdown,
@@ -172,56 +171,7 @@ def scorer_node(state: AgentState) -> dict:
         (m.content for m in reversed(messages) if isinstance(m, AIMessage)), ""
     )
 
-    attempts = []
-
-    for attempt_num in range(1, MAX_ATTEMPTS + 1):
-
-        score_result = score_response(user_query, tool_data, current_response)
-        score = score_result.get("score", 0.0)
-
-        print(f"[SCORER] Attempt {attempt_num}: {score:.2f}")
-
-        attempts.append((score, current_response))
-
-        if score >= CEILING_THRESHOLD:
-            print(
-                f"[SCORER] Ceiling reached at attempt {attempt_num}, serving immediately")
-            return {"messages": [AIMessage(content=current_response)]}
-
-        if attempt_num < MAX_ATTEMPTS:
-            retry_prompt = f"""
-Your previous response was not sufficiently grounded in the tool data provided.
-
-Original question: {user_query}
-
-Tool data available:
-{tool_data}
-
-Rules for your retry:
-- Every claim must reference a specific value from the tool data above
-- Do not state anything that cannot be traced to the tool data
-- If the tool data does not support an answer, say 'Insufficient data available'
-- Be concise and specific
-- Do not reference or expose the seller_id
-"""
-            current_response = generate_simple(retry_prompt)
-
-    best_score, best_response = max(attempts, key=lambda x: x[0])
-
-    print(f"[SCORER] Serving: attempt {attempts.index((best_score, best_response)) + 1} "
-          f"with score {best_score:.2f}")
-
-    if best_score >= FLOOR_THRESHOLD:
-        return {"messages": [AIMessage(content=best_response)]}
-
-    else:
-        disclaimer = (
-            f"\n\n---\n"
-            f"Note: This response could not be fully verified against your return data. "
-            f"The answer above may be incomplete or insufficiently grounded. "
-            f"Please try rephrasing your question."
-        )
-        return {"messages": [AIMessage(content=best_response + disclaimer)]}
+    return {"messages": [AIMessage(content=current_response)]}
 
 
 # ---------------------------------------------------------------------------

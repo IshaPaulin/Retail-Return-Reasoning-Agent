@@ -5,7 +5,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.agent.dashboard_pipeline import run_dashboard_analysis
-from app.auth.jwt import get_current_seller
+from app.auth.jwt import validate_token
 from app.database.connection import products_collection
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -31,9 +31,7 @@ def _to_object_id(value: str):
 
 
 def _product_id_from_record(product: dict) -> str | None:
-    product_id = product.get("product_id")
-    if product_id:
-        return str(product_id)
+    # Schema PK is _id (ObjectId) — no separate product_id field
     record_id = product.get("_id")
     if record_id is not None:
         return str(record_id)
@@ -41,30 +39,22 @@ def _product_id_from_record(product: dict) -> str | None:
 
 
 def _product_name_from_record(product: dict, fallback_id: str) -> str:
-    return product.get("product_name") or product.get("name") or fallback_id
+    # Schema only has product_name — no "name" alias
+    return product.get("product_name") or fallback_id
 
 
 def _find_product_for_seller(product_id: str, seller_id: str):
     seller_key = _to_object_id(seller_id)
 
+    # Only valid lookup: by _id (the actual PK per schema)
     product = products_collection.find_one(
-        {"seller_id": seller_key, "product_id": product_id},
-        {"_id": 0, "product_id": 1, "product_name": 1, "name": 1},
+        {
+            "seller_id": seller_key,
+            "_id": _to_object_id(product_id),
+        },
+        {"_id": 1, "product_name": 1},  # only fetch schema-valid fields
     )
-    if product:
-        return product
-
-    product = products_collection.find_one(
-        {"seller_id": seller_key, "_id": _to_object_id(product_id)},
-        {"_id": 0, "product_id": 1, "product_name": 1, "name": 1},
-    )
-    if product:
-        return product
-
-    return products_collection.find_one(
-        {"seller_id": seller_key, "name": product_id},
-        {"_id": 0, "product_id": 1, "product_name": 1, "name": 1},
-    )
+    return product  # None if not found
 
 
 def _analyse_one_fast(product: dict, seller_id: str) -> dict | None:
@@ -75,7 +65,7 @@ def _analyse_one_fast(product: dict, seller_id: str) -> dict | None:
         analysis = run_dashboard_analysis(
             product_id,
             seller_id,
-            fast_mode=True,       # skips orders, feedback, anomalies, category, Gemini
+            fast_mode=True,
             include_gemini=False,
         )
         return mongo_safe({
@@ -106,20 +96,18 @@ def _analyse_one_fast(product: dict, seller_id: str) -> dict | None:
 
 
 @router.get("")
-def get_dashboard(current_seller_id: str = Depends(get_current_seller)):
+def get_dashboard(current_seller_id: str = Depends(validate_token)):
     seller_key = _to_object_id(current_seller_id)
     products = list(
         products_collection.find(
             {"seller_id": seller_key},
-            {"_id": 1, "product_id": 1, "product_name": 1, "name": 1},
+            {"_id": 1, "product_name": 1},  # only schema-valid fields
         )
     )
 
     if not products:
         return []
 
-    # Run all products in parallel — instead of sequential 15s * N products
-    # max_workers=4 keeps Gemini API pressure low (fast_mode doesn't call Gemini anyway)
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {
             executor.submit(_analyse_one_fast, product, current_seller_id): product
@@ -137,20 +125,21 @@ def get_dashboard(current_seller_id: str = Depends(get_current_seller)):
 @router.get("/product/{product_id}")
 def get_product_detail(
     product_id: str,
-    current_seller_id: str = Depends(get_current_seller),
+    current_seller_id: str = Depends(validate_token),
 ):
     product = _find_product_for_seller(product_id, current_seller_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    # _id is the canonical ID per schema
     normalized_product_id = _product_id_from_record(product) or product_id
 
     try:
         analysis = run_dashboard_analysis(
             normalized_product_id,
             current_seller_id,
-            fast_mode=False,      # full analysis
-            include_gemini=True,  # Gemini narrative
+            fast_mode=False,
+            include_gemini=True,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
