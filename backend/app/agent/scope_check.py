@@ -216,8 +216,8 @@ def check_scope(query: str) -> dict:
             )
         }
 
-    except Exception:
-
+    except Exception as e:
+        print(f"[SCOPE CHECK ERROR] {type(e).__name__}: {e}")
         return {
             "allowed": False,
             "classification": "OUT_OF_SCOPE",

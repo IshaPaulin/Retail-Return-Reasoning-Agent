@@ -41,9 +41,15 @@ async def chat(
             seller_id=seller_id,
         )
     except Exception as exc:
+        detail = str(exc)
+        if "503" in detail.upper() or "UNAVAILABLE" in detail.upper():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Agent pipeline failed: {detail}",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent pipeline failed: {exc}",
+            detail=f"Agent pipeline failed: {detail}",
         )
 
     return ChatResponse(

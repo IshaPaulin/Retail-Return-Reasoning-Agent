@@ -1,10 +1,10 @@
 # app/agent/chatbot_pipeline.py
 
+import inspect
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import MessagesState
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from app.core.config import FLOOR_THRESHOLD, CEILING_THRESHOLD, MAX_ATTEMPTS
 from app.agent.scope_check import check_scope
 from app.agent.gemini_client import generate_with_tools, convert_messages
 from app.tools import (
@@ -19,12 +19,6 @@ from app.tools import (
 )
 from app.agent.tool_schemas import ALL_TOOL_SCHEMAS
 
-# ---------------------------------------------------------------------------
-# TOOL REGISTRY
-# Maps tool name strings (what Gemini returns) to actual Python functions.
-# seller_id is always injected from state — never from Gemini's arguments.
-# ---------------------------------------------------------------------------
-
 TOOL_REGISTRY = {
     "get_product_return_data": get_product_return_data,
     "get_return_reasons_breakdown": get_return_reasons_breakdown,
@@ -37,25 +31,16 @@ TOOL_REGISTRY = {
 }
 
 
-# ---------------------------------------------------------------------------
-# STATE DEFINITION
-# ---------------------------------------------------------------------------
-
 class AgentState(MessagesState):
     seller_id: str
     scope_passed: bool = True
 
-
-# ---------------------------------------------------------------------------
-# NODE 1: SCOPE CHECK
-# ---------------------------------------------------------------------------
 
 def scope_check_node(state: AgentState) -> dict:
     user_message = next(
         (m.content for m in state["messages"]
          if isinstance(m, HumanMessage)), ""
     )
-
     scope_result = check_scope(user_message)
     if not scope_result["allowed"]:
         return {
@@ -71,13 +56,24 @@ def scope_check_router(state: AgentState) -> str:
     return "agent"
 
 
-# ---------------------------------------------------------------------------
-# NODE 2: AGENT NODE
-# ---------------------------------------------------------------------------
-
 def agent_node(state: AgentState) -> dict:
-    gemini_contents = convert_messages(state["messages"]) 
-    response = generate_with_tools(state["messages"], ALL_TOOL_SCHEMAS)
+    messages = list(state["messages"])
+
+    tool_call_count = sum(
+        1 for m in messages
+        if isinstance(m, AIMessage) and hasattr(m, "tool_calls") and m.tool_calls
+    )
+
+    if tool_call_count >= 3:
+        messages.append(SystemMessage(
+            content=(
+                "You have gathered enough data. Stop calling tools now and "
+                "synthesize a final answer based on the tool results already collected."
+            )
+        ))
+
+    gemini_contents = convert_messages(messages)
+    response = generate_with_tools(gemini_contents, ALL_TOOL_SCHEMAS)
 
     candidate = response.candidates[0]
     parts = candidate.content.parts if candidate.content and candidate.content.parts else []
@@ -103,15 +99,18 @@ def agent_node(state: AgentState) -> dict:
 
 def agent_router(state: AgentState) -> str:
     last_message = state["messages"][-1]
+
+    tool_call_count = sum(
+        1 for m in state["messages"]
+        if isinstance(m, AIMessage) and hasattr(m, "tool_calls") and m.tool_calls
+    )
+
+    if tool_call_count >= 4:
+        return END
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
-    return "scorer"
+    return END
 
-
-# ---------------------------------------------------------------------------
-# NODE 3: TOOL EXECUTION NODE
-# seller_id always injected from state — overrides anything Gemini passed.
-# ---------------------------------------------------------------------------
 
 def tool_node(state: AgentState) -> dict:
     seller_id = state["seller_id"]
@@ -120,25 +119,26 @@ def tool_node(state: AgentState) -> dict:
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        tool_args = tool_call["args"]
+        tool_args = dict(tool_call["args"])  # copy — don't mutate Gemini's dict
+        tool_args["seller_id"] = seller_id
 
         try:
             if tool_name not in TOOL_REGISTRY:
                 raise KeyError(f"Unknown tool: {tool_name}")
 
-            # Always inject seller_id from state, never from Gemini
-            tool_args["seller_id"] = seller_id
+            # Strip unknown kwargs Gemini may have passed
+            fn = TOOL_REGISTRY[tool_name]
+            valid_params = inspect.signature(fn).parameters
+            tool_args = {k: v for k, v in tool_args.items() if k in valid_params}
 
-            result = TOOL_REGISTRY[tool_name](**tool_args)
+            result = fn(**tool_args)
 
         except KeyError as e:
             result = {"error": f"Unknown tool requested: {str(e)}"}
         except TypeError as e:
-            result = {
-                "error": f"Invalid arguments for tool {tool_name}: {str(e)}"}
+            result = {"error": f"Invalid arguments for tool {tool_name}: {str(e)}"}
         except Exception as e:
-            result = {
-                "error": f"Tool execution failed for {tool_name}: {str(e)}"}
+            result = {"error": f"Tool execution failed for {tool_name}: {str(e)}"}
 
         tool_results.append(
             ToolMessage(
@@ -151,55 +151,20 @@ def tool_node(state: AgentState) -> dict:
     return {"messages": tool_results}
 
 
-# ---------------------------------------------------------------------------
-# NODE 4: SCORER NODE
-# ---------------------------------------------------------------------------
-
-def scorer_node(state: AgentState) -> dict:
-
-    messages = state["messages"]
-
-    user_query = next(
-        (m.content for m in messages if isinstance(m, HumanMessage)), ""
-    )
-
-    tool_data = [
-        m.content for m in messages
-        if isinstance(m, ToolMessage)
-    ]
-
-    current_response = next(
-        (m.content for m in reversed(messages) if isinstance(m, AIMessage)), ""
-    )
-
-    return {"messages": [AIMessage(content=current_response)]}
-
-
-# ---------------------------------------------------------------------------
-# GRAPH COMPILATION
-# ---------------------------------------------------------------------------
-
 builder = StateGraph(AgentState)
 
 builder.add_node("scope_check", scope_check_node)
 builder.add_node("agent", agent_node)
 builder.add_node("tools", tool_node)
-builder.add_node("scorer", scorer_node)
 
 builder.set_entry_point("scope_check")
 
 builder.add_conditional_edges("scope_check", scope_check_router)
 builder.add_conditional_edges("agent", agent_router)
 builder.add_edge("tools", "agent")
-builder.add_edge("scorer", END)
 
 graph = builder.compile()
 
-
-# ---------------------------------------------------------------------------
-# PUBLIC ENTRY POINT
-# Called by chat.py (the FastAPI route).
-# ---------------------------------------------------------------------------
 
 def run_chat(user_message: str, seller_id: str) -> str:
     initial_state = {
@@ -209,14 +174,14 @@ def run_chat(user_message: str, seller_id: str) -> str:
 
     config = {
         "configurable": {"thread_id": seller_id},
-        "recursion_limit": 10,
+        "recursion_limit": 25,
     }
 
     result = graph.invoke(initial_state, config=config)
 
     final_message = next(
-        (m.content for m in reversed(
-            result["messages"]) if isinstance(m, AIMessage)),
+        (m.content for m in reversed(result["messages"])
+         if isinstance(m, AIMessage) and m.content),
         "No response generated."
     )
 

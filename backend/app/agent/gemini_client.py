@@ -10,7 +10,7 @@ from app.core.config import GEMINI_API_KEYS
 if not GEMINI_API_KEYS:
     raise ValueError("No Gemini API keys found in .env")
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.5-flash"
 
 _current_key_index = 0
 
@@ -18,6 +18,29 @@ _current_key_index = 0
 def get_client() -> genai.Client:
     """Returns a Gemini client using the current active API key."""
     return genai.Client(api_key=GEMINI_API_KEYS[_current_key_index])
+
+
+def _rotate_key():
+    """Rotates to the next available API key."""
+    global _current_key_index
+    _current_key_index = (_current_key_index + 1) % len(GEMINI_API_KEYS)
+    print(f"[KEY ROTATOR] Switched to key index {_current_key_index}")
+
+
+def _is_quota_error(e: Exception) -> bool:
+    """Returns True if the exception is a quota/rate-limit or temporary availability error."""
+    error_str = str(e).upper()
+    return any(x in error_str for x in [
+        "429",
+        "503",
+        "RESOURCE_EXHAUSTED",
+        "UNAVAILABLE",
+        "QUOTA",
+        "RATE LIMIT",
+        "TOO MANY REQUESTS",
+        "HIGH DEMAND",
+        "SERVER ERROR",
+    ])
 
 
 def convert_messages(contents: list) -> list[types.Content]:
@@ -120,53 +143,72 @@ def generate_simple(prompt: str) -> str:
     One-shot generation with no tools.
     Used by scope_check.py and dashboard_scoring.py fallback.
     """
-    client = get_client()
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-    )
-    return response.text
+    for _ in range(len(GEMINI_API_KEYS)):
+        try:
+            client = get_client()
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            if _is_quota_error(e):
+                _rotate_key()
+                continue
+            raise
+
+    raise Exception("All Gemini API keys exhausted for generate_simple.")
 
 
 def generate_json(prompt: str, system_instruction: str = "") -> dict:
     """
     One-shot generation expecting a structured JSON response.
     Used by dashboard_scoring.py for Gemini insight generation.
-    Strips markdown fences and parses JSON before returning.
-    Returns empty dict on parse failure — caller handles gracefully.
     """
-    client = get_client()
-
     full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=full_prompt,
-    )
+    for _ in range(len(GEMINI_API_KEYS)):
+        try:
+            client = get_client()
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=full_prompt,
+            )
+            raw = response.text.strip()
+            cleaned = raw.replace("```json", "").replace("```", "").strip()
+            try:
+                return json.loads(cleaned)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        except Exception as e:
+            if _is_quota_error(e):
+                _rotate_key()
+                continue
+            raise
 
-    raw = response.text.strip()
-    cleaned = raw.replace("```json", "").replace("```", "").strip()
-
-    try:
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, TypeError):
-        return {}
+    raise Exception("All Gemini API keys exhausted for generate_json.")
 
 
 def generate_with_tools(contents: list, tools_schema: list):
     """
     Generation with Gemini native function calling enabled.
-    contents: list of Gemini types.Content objects (already converted
-    via convert_messages before calling this function).
     Used by chatbot_pipeline.py agent_node.
     Returns raw response object.
     """
-    client = get_client()
-    tool_config = types.Tool(function_declarations=tools_schema)
-    config = types.GenerateContentConfig(tools=[tool_config])
+    for _ in range(len(GEMINI_API_KEYS)):
+        try:
+            client = get_client()
+            tool_config = types.Tool(function_declarations=tools_schema)
+            config = types.GenerateContentConfig(tools=[tool_config])
+            return client.models.generate_content(
+                model=MODEL,
+                contents=contents,
+                config=config,
+            )
+        except Exception as e:
+            if _is_quota_error(e):
+                _rotate_key()
+                continue
+            raise
 
-    return client.models.generate_content(
-        model=MODEL,
-        contents=contents,
-        config=config,
-    )
+    raise Exception("All Gemini API keys exhausted for generate_with_tools.")
