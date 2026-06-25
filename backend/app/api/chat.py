@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from app.auth.jwt import validate_token
@@ -35,15 +36,14 @@ async def chat(
     """
     Accepts a natural language query from the authenticated seller,
     runs it through the LangGraph chatbot pipeline, and returns the
-    agent's grounded response.
+    agent's response.
 
     - seller_id is always sourced from the validated JWT, never from the request body.
     - All tool calls inside the pipeline are automatically scoped to this seller_id.
-    - Conversation history is persisted per seller via the MongoDB checkpointer
-      using seller_id as the thread_id.
     """
     try:
-        response_text = run_chat(
+        response_text = await run_in_threadpool(
+            run_chat,
             user_message=body.message,
             seller_id=seller_id,
         )
