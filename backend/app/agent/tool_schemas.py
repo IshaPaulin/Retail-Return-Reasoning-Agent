@@ -107,11 +107,12 @@ get_order_delivery_data_schema = types.FunctionDeclaration(
 compare_seller_products_schema = types.FunctionDeclaration(
     name="compare_seller_products",
     description=(
-        "Retrieves return metrics (order count, return count, return rate) "
-        "across ALL of the authenticated seller's products, sorted by return "
-        "rate descending. Use this when the user asks to compare products, "
-        "wants to know which products have the highest/lowest return rates, "
-        "or asks for a store-wide overview rather than a single product."
+        "ALWAYS call this first when the user mentions a product by name. "
+        "This is the ONLY way to resolve a product name to a product_id. "
+        "Returns all seller products with their product_ids and return metrics. "
+        "After calling this, find the matching product by name and use its "
+        "product_id for all subsequent tool calls. "
+        "Never ask the user for a product_id — use this tool instead."
     ),
     parameters={
         "type": "object",

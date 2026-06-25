@@ -775,7 +775,7 @@ def run_dashboard_analysis(
     )
 
 
-def run_chat(query: str, seller_id: str) -> dict[str, Any]:
+'''def run_chat(query: str, seller_id: str) -> dict[str, Any]:
     lowered_query = query.lower()
     allowed_terms = ["return", "product", "order", "feedback", "delivery", "seller", "sku"]
 
@@ -788,4 +788,4 @@ def run_chat(query: str, seller_id: str) -> dict[str, Any]:
     return {
         "response": "Chat mode is connected, but Gemini tool calling will be added later.",
         "tools_used": ["scope_guard"],
-    }
+    }'''
