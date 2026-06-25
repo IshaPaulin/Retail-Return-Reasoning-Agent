@@ -30,6 +30,19 @@ TOOL_REGISTRY = {
     "get_sku_return_breakdown": get_sku_return_breakdown,
 }
 
+AGENT_SYSTEM_PROMPT = """You are a retail returns analytics assistant for a seller dashboard.
+
+CRITICAL RULES — follow these without exception:
+1. NEVER ask the user for a product_id or any database identifier.
+2. If the user mentions a product by name, ALWAYS call compare_seller_products 
+   first to get all products and their IDs, identify the matching product, 
+   then use its product_id in all subsequent tool calls.
+3. seller_id is always injected automatically — never ask for it.
+4. Answer only questions about returns, products, orders, feedback, SKUs,
+   delivery, and anomalies for this seller.
+
+User question: """
+
 
 class AgentState(MessagesState):
     seller_id: str
@@ -38,8 +51,7 @@ class AgentState(MessagesState):
 
 def scope_check_node(state: AgentState) -> dict:
     user_message = next(
-        (m.content for m in state["messages"]
-         if isinstance(m, HumanMessage)), ""
+        (m.content for m in state["messages"] if isinstance(m, HumanMessage)), ""
     )
     scope_result = check_scope(user_message)
     if not scope_result["allowed"]:
@@ -63,6 +75,20 @@ def agent_node(state: AgentState) -> dict:
         1 for m in messages
         if isinstance(m, AIMessage) and hasattr(m, "tool_calls") and m.tool_calls
     )
+
+    # On the first agent call, prepend system instructions directly into
+    # the first HumanMessage content. This is because convert_messages maps
+    # SystemMessage → "user" role, which Gemini doesn't treat as authoritative.
+    # Prepending into the HumanMessage ensures Gemini reads the rules first.
+    if tool_call_count == 0:
+        first_human_idx = next(
+            (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), None
+        )
+        if first_human_idx is not None:
+            original_content = messages[first_human_idx].content
+            messages[first_human_idx] = HumanMessage(
+                content=f"{AGENT_SYSTEM_PROMPT}{original_content}"
+            )
 
     if tool_call_count >= 3:
         messages.append(SystemMessage(
@@ -119,14 +145,13 @@ def tool_node(state: AgentState) -> dict:
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        tool_args = dict(tool_call["args"])  # copy — don't mutate Gemini's dict
+        tool_args = dict(tool_call["args"])
         tool_args["seller_id"] = seller_id
 
         try:
             if tool_name not in TOOL_REGISTRY:
                 raise KeyError(f"Unknown tool: {tool_name}")
 
-            # Strip unknown kwargs Gemini may have passed
             fn = TOOL_REGISTRY[tool_name]
             valid_params = inspect.signature(fn).parameters
             tool_args = {k: v for k, v in tool_args.items() if k in valid_params}

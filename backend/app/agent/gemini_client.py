@@ -10,7 +10,7 @@ from app.core.config import GEMINI_API_KEYS
 if not GEMINI_API_KEYS:
     raise ValueError("No Gemini API keys found in .env")
 
-MODEL = "gemini-3.5-flash"
+MODEL = "gemini-2.5-flash"
 
 _current_key_index = 0
 
