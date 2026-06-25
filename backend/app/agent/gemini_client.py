@@ -1,3 +1,6 @@
+# app/agent/gemini_client.py
+
+import json
 from google import genai
 from google.genai import types
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
@@ -9,28 +12,15 @@ if not GEMINI_API_KEYS:
 
 MODEL = "gemini-2.5-flash"
 
-
-def get_client():
-    """
-    Returns a working Gemini client.
-    Tries API keys one by one until one succeeds.
-    """
-    last_error = None
-
-    for api_key in GEMINI_API_KEYS:
-        try:
-            client = genai.Client(api_key=api_key)
-            client.models.generate_content(model=MODEL, contents="ping")
-            return client
-
-        except Exception as e:
-            print(f"Gemini key failed: {api_key[:10]}...")
-            last_error = e
-
-    raise Exception(f"All Gemini API keys failed. Last error: {last_error}")
+_current_key_index = 0
 
 
-def _convert_messages(contents: list) -> list[types.Content]:
+def get_client() -> genai.Client:
+    """Returns a Gemini client using the current active API key."""
+    return genai.Client(api_key=GEMINI_API_KEYS[_current_key_index])
+
+
+def convert_messages(contents: list) -> list[types.Content]:
     """
     Converts LangChain message objects (used by LangGraph state) into
     Gemini SDK types.Content objects.
@@ -53,7 +43,6 @@ def _convert_messages(contents: list) -> list[types.Content]:
             )
 
         elif isinstance(msg, AIMessage):
-            # Reconstruct function call parts if tool_calls present
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 parts = []
                 for tc in msg.tool_calls:
@@ -77,7 +66,6 @@ def _convert_messages(contents: list) -> list[types.Content]:
                 )
 
         elif isinstance(msg, ToolMessage):
-            # Tool results go back as a user turn with a function_response part
             tool_name = msg.name if hasattr(msg, "name") and msg.name else "tool"
             gemini_contents.append(
                 types.Content(
@@ -94,8 +82,6 @@ def _convert_messages(contents: list) -> list[types.Content]:
             )
 
         elif isinstance(msg, SystemMessage):
-            # Gemini doesn't support system role inside contents;
-            # prepend as user turn so context isn't lost
             gemini_contents.append(
                 types.Content(
                     role="user",
@@ -104,7 +90,6 @@ def _convert_messages(contents: list) -> list[types.Content]:
             )
 
         else:
-            # Fallback for any unknown message type
             gemini_contents.append(
                 types.Content(
                     role="user",
@@ -116,6 +101,10 @@ def _convert_messages(contents: list) -> list[types.Content]:
 
 
 def generate_simple(prompt: str) -> str:
+    """
+    One-shot generation with no tools.
+    Used by scope_check.py and dashboard_scoring.py fallback.
+    """
     client = get_client()
     response = client.models.generate_content(
         model=MODEL,
@@ -124,20 +113,45 @@ def generate_simple(prompt: str) -> str:
     return response.text
 
 
-def generate_with_tools(contents: list, tools_schema: list):
+def generate_json(prompt: str, system_instruction: str = "") -> dict:
     """
-    contents    : list of LangChain message objects from LangGraph state
-    tools_schema: list of Gemini FunctionDeclaration objects from tool_schemas.py
+    One-shot generation expecting a structured JSON response.
+    Used by dashboard_scoring.py for Gemini insight generation.
+    Strips markdown fences and parses JSON before returning.
+    Returns empty dict on parse failure — caller handles gracefully.
     """
     client = get_client()
-    gemini_contents = _convert_messages(contents)
+
+    full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=full_prompt,
+    )
+
+    raw = response.text.strip()
+    cleaned = raw.replace("```json", "").replace("```", "").strip()
+
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def generate_with_tools(contents: list, tools_schema: list):
+    """
+    Generation with Gemini native function calling enabled.
+    contents: list of Gemini types.Content objects (already converted
+    via convert_messages before calling this function).
+    Used by chatbot_pipeline.py agent_node.
+    Returns raw response object.
+    """
+    client = get_client()
     tool_config = types.Tool(function_declarations=tools_schema)
     config = types.GenerateContentConfig(tools=[tool_config])
 
     return client.models.generate_content(
         model=MODEL,
-        contents=gemini_contents,
+        contents=contents,
         config=config,
     )
-
-
