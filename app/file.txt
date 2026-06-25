@@ -535,5 +535,158 @@ feature/frontend (chat) is DONE when:
 
 
 --------------------------------------------------------------------------------
-END OF MASTER REFERENCE FILE
---------------------------------------------------------------------------------
+Formalized Agent Tool Specification Manifest
+This is the exact structural specification required by the tools parameters configuration in the Gemini API.
+1. get_product_return_data
+Description: Fetches all raw, core return transaction logs for a specific parent product line scoped to the authenticated seller.
+Condition / When to Call: Call when the user asks a general question about the overall return volume, frequency, or basic return entry logs of a product line.
+Dependencies: None. Assumes baseline presence of product and return identifiers.
+Output Scope: Real-time database fetch. All-time historical data available in the collection.
+Error / Null Behavior: If no returns exist for the product, returns an empty array: [].
+Return Schema:
+JSON
+[
+  {
+    "return_id": "string (ObjectId)",
+    "order_id": "string (ObjectId)",
+    "customer_id": "string",
+    "return_date": "string (ISODate)",
+    "return_reason": "string",
+    "refund_amount": "number (Decimal)"
+  }
+]
+
+2. get_return_reasons_breakdown
+Description: Retrieves a high-level grouped categorical count breakdown of return reasons for a specified product.
+Condition / When to Call: Automatically called on dashboard load or when a user explicitly asks "Why are people returning this item?" or "What is the main issue with this product?"
+Dependencies: Requires the return_reason_category enum field to be populated in the dataset.
+Output Scope: Real-time database aggregation. All-time historical data.
+Error / Null Behavior: Returns an empty object {} if no returns match the product.
+Return Schema:
+JSON
+{
+  "product_id": "string (ObjectId)",
+  "total_returns": "integer",
+  "breakdown": [
+    { "category": "Size Issue", "count": 24 },
+    { "category": "Damaged", "count": 12 },
+    { "category": "Quality Issue", "count": 4 }
+  ]
+}
+
+3. get_customer_feedback
+Description: Pulls written text reviews, star ratings, and submission dates left by customers for a specific product.
+Condition / When to Call: Call when looking for qualitative evidence, context behind complaints, or when the user asks about customer sentiment/reviews.
+Dependencies: Relies on the existence of data within the Feedback collection linked to the product.
+Output Scope: Real-time database fetch. All-time historical records.
+Error / Null Behavior: Returns an empty array [] if no feedback records exist.
+Return Schema:
+JSON
+[
+  {
+    "feedback_id": "string (ObjectId)",
+    "customer_id": "string (ObjectId)",
+    "rating": "integer (Range 1-5)",
+    "comment_text": "string or null",
+    "submission_date": "string (ISODate)"
+  }
+]
+
+4. get_return_trend
+Description: Retrieves timestamped return transaction metrics grouped chronologically to identify operational shifts over time.
+Condition / When to Call: Call only if the user asks about changes over time, monthly/weekly patterns, or return timelines.
+Dependencies: Strict dependency on time-series records (return_date must be present in the data).
+Output Scope: Real-time aggregation. Grouped by calendar month.
+Error / Null Behavior: Gracefully returns an empty array [] if no date values are present or no records exist.
+Return Schema:
+JSON
+[
+  { "year_month": "2026-04", "return_count": 15 },
+  { "year_month": "2026-05", "return_count": 42 }
+]
+
+5. get_order_delivery_data
+Description: Fetches order transaction timelines, delivery dates, and fulfillment states for correlation analysis against returns.
+Condition / When to Call: Call when investigating if shipping delays, logistics issues, or specific order batches are causing a spike in returns.
+Dependencies: Requires order_date, delivery_date, and fulfilment_status fields to exist in the database collections.
+Output Scope: Real-time database join/fetch over historical order records.
+Error / Null Behavior: Returns an empty array [] if data fields are missing or unpopulated.
+Return Schema:
+JSON
+[
+  {
+    "order_id": "string (ObjectId)",
+    "order_date": "string (ISODate)",
+    "delivery_date": "string (ISODate) or null",
+    "fulfilment_status": "string (pending|shipped|delivered|cancelled|returned)",
+    "quantity": "integer"
+  }
+]
+
+6. compare_seller_products
+Description: Pulls return metrics across all of the authenticated seller's listed items to support horizontal comparative analysis.
+Condition / When to Call: Call when the user asks cross-product questions like "Which item has the highest return rate?" or "Compare product A with product B".
+Dependencies: Cross-references the Products collection and Returns metrics mapped to the same seller_id.
+Output Scope: Real-time seller inventory snapshot.
+Error / Null Behavior: Returns an empty array [] if the seller has no active products.
+Return Schema:
+JSON
+[
+  {
+    "product_id": "string (ObjectId)",
+    "product_name": "string",
+    "category_name": "string",
+    "total_orders": "integer",
+    "total_returns": "integer",
+    "return_rate_percentage": "number"
+  }
+]
+
+7. detect_anomalies
+Description: Runs logical statistical scans on return variations to flag immediate spikes, drop-offs, or weird thematic clusters.
+Condition / When to Call: Automatically triggered on dashboard load to build product cards or when users look for red flags or unusual activity.
+Dependencies: None, though it yields richer patterns when time-series data or category fields exist.
+Output Scope: Real-time computational evaluation over live dataset.
+Error / Null Behavior: Returns an object indicating no anomalies found if data is flat or sparse.
+Return Schema:
+JSON
+{
+  "anomaly_detected": "boolean",
+  "flags": [
+    {
+      "type": "string (Spike|Drop|Cluster)",
+      "description": "string (e.g., 'Sudden 40% surge in Size Issue returns during May 2026')",
+      "confidence_score": "number"
+    }
+  ]
+}
+
+8. get_sku_return_breakdown (New)
+Description: Returns precise return frequencies and underlying reasons grouped explicitly by sku_id and corresponding variant options.
+Condition / When to Call: Call whenever an overall product line shows high return rates and the agent needs to find out if a specific variant (e.g., Size Small vs. Size Large) is creating the issue.
+Dependencies: Enforces a strict functional dependency on order and return transaction documents having an active, populated sku_id and structural attributes.
+Output Scope: Real-time live database aggregation.
+Error / Null Behavior: If the seller hasn't populated data down to the variant tier or there are no returns, it gracefully returns an empty array [].
+Return Schema:
+JSON
+[
+  {
+    "sku_id": "string (ObjectId)",
+    "sku_code": "string",
+    "variant_attributes": {
+      "size": "string",
+      "color": "string"
+    },
+    "return_count": "integer",
+    "primary_reason": "string"
+  }
+]
+database names :
+category
+feedback
+orders
+products
+returns
+seller
+sku
+

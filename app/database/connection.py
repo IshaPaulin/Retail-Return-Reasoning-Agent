@@ -17,25 +17,6 @@ client = MongoClient(uri, server_api=ServerApi('1')) #creates connection python-
 db = client["Retail-Return"] #Retail-Return is the name of the database ; creates(if database doesn’t exist) or accesses the database Retail-Return
 
 
-collections = [
-    "products",
-    "orders",
-    "returns",
-    "feedback",
-    "sku",
-    "category"
-] #list of collections(tables) to create
-
-for collection in collections:
-    if collection not in db.list_collection_names():
-        db.create_collection(collection)
-        print(f"{collection} created") #prints products created and so on
-    else:
-        print(f"{collection} already exists")
-
-print("Done")
-
-
 try:
     client.admin.command('ping')
     print("Pinged your deployment. You successfully connected to MongoDB!")

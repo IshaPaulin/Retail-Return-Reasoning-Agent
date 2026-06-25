@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 
-from app.database.connection import returns_collection
+from app.tools.get_product_return_data import get_product_return_data
 
 
 def _parse_date(value):
@@ -23,16 +23,11 @@ def _parse_date(value):
 
 
 def detect_anomalies(product_id: str, seller_id: str) -> dict:
-    records = list(
-        returns_collection.find(
-            {
-                "seller_id": seller_id,
-                "product_id": product_id,
-                "return_date": {"$exists": True, "$ne": None},
-            },
-            {"_id": 0, "return_date": 1},
-        )
-    )
+    records = [
+        {"return_date": record.get("return_date")}
+        for record in get_product_return_data(product_id, seller_id)
+        if record.get("return_date") is not None
+    ]
 
     if not records:
         return {"anomalies_detected": False, "details": []}

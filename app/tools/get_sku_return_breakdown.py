@@ -1,27 +1,36 @@
 from collections import defaultdict
 
-from app.database.connection import returns_collection
+from app.database.connection import returns_collection, skus_collection
+from app.tools._mongo_helpers import to_object_id
 
 
 def get_sku_return_breakdown(product_id: str, seller_id: str) -> list:
+    sku_docs = list(
+        skus_collection.find(
+            {
+                "seller_id": to_object_id(seller_id),
+                "product_id": to_object_id(product_id),
+            },
+            {"_id": 1, "variant_attributes": 1, "sku_code": 1},
+        )
+    )
+
+    if not sku_docs:
+        return []
+
+    sku_ids = [sku["_id"] for sku in sku_docs]
     records = list(
         returns_collection.find(
-            {
-                "seller_id": seller_id,
-                "product_id": product_id,
-            },
-            {"_id": 0, "sku_id": 1, "variant_attributes": 1},
+            {"sku_id": {"$in": sku_ids}},
+            {"_id": 0, "sku_id": 1},
         )
     )
 
     if not records:
         return []
 
-    if not any(record.get("sku_id") for record in records):
-        return []
-
     breakdown = defaultdict(int)
-    variants = {}
+    variants = {sku["_id"]: sku.get("variant_attributes") or {} for sku in sku_docs}
 
     for record in records:
         sku_id = record.get("sku_id")
@@ -29,18 +38,11 @@ def get_sku_return_breakdown(product_id: str, seller_id: str) -> list:
             continue
 
         breakdown[sku_id] += 1
-        variant_attributes = record.get("variant_attributes")
-        if isinstance(variant_attributes, dict):
-            variants[sku_id] = ", ".join(
-                f"{key}: {value}" for key, value in variant_attributes.items()
-            )
-        elif isinstance(variant_attributes, str):
-            variants[sku_id] = variant_attributes
 
     return [
         {
             "sku_id": sku_id,
-            "variant": variants.get(sku_id, ""),
+            "variant": ", ".join(f"{key}: {value}" for key, value in (variants.get(sku_id) or {}).items()),
             "return_count": count,
         }
         for sku_id, count in breakdown.items()
