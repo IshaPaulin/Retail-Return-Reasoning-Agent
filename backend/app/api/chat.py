@@ -9,12 +9,6 @@ from app.agent.chat_pipeline import run_chat
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1,
-                         description="The seller's natural language query.")
-
-
 class ChatResponse(BaseModel):
     seller_id: str
     message:   str
@@ -57,3 +51,32 @@ async def chat(
         message=body.message,
         response=response_text,
     )
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    history: list[dict] = Field(default_factory=list)
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(
+    body: ChatRequest,
+    seller_id: str = Depends(validate_token),
+) -> ChatResponse:
+    try:
+        response_text = await run_in_threadpool(
+            run_chat,
+            user_message=body.message,
+            seller_id=seller_id,
+            history=body.history,
+        )
+    except Exception as exc:
+        detail = str(exc)
+        if "503" in detail.upper() or "UNAVAILABLE" in detail.upper():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail=f"Agent pipeline failed: {detail}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Agent pipeline failed: {detail}")
+
+    return ChatResponse(seller_id=seller_id, message=body.message, response=response_text)
+
+

@@ -191,9 +191,21 @@ builder.add_edge("tools", "agent")
 graph = builder.compile()
 
 
-def run_chat(user_message: str, seller_id: str) -> str:
+def run_chat(user_message: str, seller_id: str, history: list[dict] = []) -> str:
+    messages = []
+
+    # Rebuild conversation history from previous turns (last 10 messages)
+    for msg in history[-10:]:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg.get("role") == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+
+    # Append current user message
+    messages.append(HumanMessage(content=user_message))
+
     initial_state = {
-        "messages": [HumanMessage(content=user_message)],
+        "messages": messages,
         "seller_id": seller_id,
     }
 

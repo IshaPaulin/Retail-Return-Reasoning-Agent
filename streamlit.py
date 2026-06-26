@@ -295,7 +295,14 @@ with st.form("chat_form", clear_on_submit=True):
         if chat_text:
             chat_payload = {
                 "message": chat_text,
-            }
+                "history": [
+        {
+            "role": "user" if m["sender"] == "user" else "assistant",
+            "content": m["text"]
+        }
+        for m in st.session_state.chat_messages
+    ],
+}
             response_data, response_error = api_request(
                 base_url,
                 "/chat",
