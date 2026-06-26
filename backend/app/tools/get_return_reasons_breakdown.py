@@ -1,28 +1,41 @@
 from bson import ObjectId
-from app.database.connection import returns_collection
+from app.database.connection import returns_collection, skus_collection
 
 
 def get_return_reasons_breakdown(product_id: str, seller_id: str) -> dict:
-    pipeline = [
-        {"$match": {"sku_id": {"$exists": True, "$ne": None}}},
+    sku_docs = list(skus_collection.find(
         {
-            "$lookup": {
-                "from": "sku",
-                "localField": "sku_id",
-                "foreignField": "_id",
-                "as": "sku_info",
-            }
+            "seller_id": ObjectId(seller_id),
+            "product_id": ObjectId(product_id),
         },
-        {"$unwind": "$sku_info"},
+        {"_id": 1}
+    ))
+    sku_ids = [s["_id"] for s in sku_docs]
+
+    if not sku_ids:
+        return {}
+
+    pipeline = [
         {
             "$match": {
-                "sku_info.product_id": ObjectId(product_id),
-                "sku_info.seller_id": ObjectId(seller_id),
+                "sku_id": {"$in": sku_ids},
                 "return_reason_category": {"$exists": True, "$ne": None},
             }
         },
-        {"$group": {"_id": "$return_reason_category", "count": {"$sum": 1}}},
-        {"$project": {"_id": 0, "reason": "$_id", "count": 1}},    ]
+        {
+            "$group": {
+                "_id": "$return_reason_category",
+                "count": {"$sum": 1}
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "reason": "$_id",
+                "count": 1
+            }
+        },
+    ]
 
     results = list(returns_collection.aggregate(pipeline))
     return {item["reason"]: item["count"] for item in results}

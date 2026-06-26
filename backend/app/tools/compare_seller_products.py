@@ -30,7 +30,7 @@ def compare_seller_products(seller_id: str) -> list:
     # Orders grouped by sku_id
     order_agg = orders_collection.aggregate([
         {"$match": {"sku_id": {"$in": sku_ids}}},
-        {"$group": {"_id": "$sku_id", "order_count": {"$sum": 1}}},
+        {"$group": {"_id": "$sku_id", "order_count": {"$sum": {"$ifNull": ["$quantity", 1]}}}},
     ])
     order_counts_by_product = {}
     for doc in order_agg:
@@ -54,7 +54,7 @@ def compare_seller_products(seller_id: str) -> list:
         pid = product["_id"]
         orders = order_counts_by_product.get(pid, 0)
         returns = return_counts_by_product.get(pid, 0)
-        return_rate = round((returns / orders) * 100, 2) if orders else 0.0
+        return_rate = round(returns / orders, 4) if orders else 0.0
 
         results.append({
             "product_id": str(pid),

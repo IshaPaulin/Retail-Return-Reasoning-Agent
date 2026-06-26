@@ -1,7 +1,11 @@
 from bson import ObjectId
 from app.database.connection import skus_collection, returns_collection
 
-def get_return_trend(seller_id : str, product_id : str) -> dict:
+# NOTE: This tool returns raw time-series data for the chatbot/Gemini to reason over.
+# dashboard_scoring.py has its own _monthly_return_trend() which computes a
+# trend label and growth rate for the dashboard card. These two produce different
+# output shapes intentionally and should not be expected to match.
+def get_return_trend(product_id: str, seller_id: str) -> dict:
     skus=skus_collection.find(
         {
         "seller_id": ObjectId(seller_id),

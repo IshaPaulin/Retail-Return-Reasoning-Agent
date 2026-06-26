@@ -14,8 +14,8 @@ def get_order_delivery_data(product_id: str, seller_id: str) -> list:
     sku_docs = list(
         skus_collection.find(
             {
-                "seller_id": _to_object_id(seller_id),
-                "product_id": _to_object_id(product_id),
+                "seller_id": ObjectId(seller_id),
+                "product_id": ObjectId(product_id),
             },
             {"_id": 1},
         )
@@ -61,21 +61,6 @@ def get_order_delivery_data(product_id: str, seller_id: str) -> list:
             record["delivery_duration_days"] = None
 
     return records
-
-
-def _to_object_id(value):
-    """
-    Convert a string id to ObjectId if needed.
-    Avoids the silent empty-result bug when Mongo stores ObjectId
-    but the caller passes a plain string.
-    """
-    if isinstance(value, ObjectId):
-        return value
-    try:
-        return ObjectId(str(value))
-    except Exception:
-        return value  # fall back to raw value; Mongo will return no results
-
 
 def _calc_delivery_duration(order_date, delivery_date):
     """

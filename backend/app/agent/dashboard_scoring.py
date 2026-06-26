@@ -16,7 +16,6 @@ from app.database.connection import (
     skus_collection,
 )
 from app.tools.detect_anomalies import detect_anomalies
-from app.tools.get_product_return_data import get_product_return_data
 from app.tools.get_customer_feedback import get_customer_feedback
 from app.tools.get_return_reasons_breakdown import get_return_reasons_breakdown
 from app.tools.get_sku_return_breakdown import get_sku_return_breakdown
@@ -296,7 +295,7 @@ def _anomaly_severity(anomalies: dict[str, Any]) -> float:
         # We don't have the average baked into the string, so use count as
         # a relative proxy across buckets: more returns in a spike month
         # relative to other spike months = more severe.
-        match = re.search(r":\s*(\d+)\s*returns", str(line))
+        match = re.search(r"Recorded\s+(\d+)\s+returns", str(line))
         if match:
             multiples.append(float(match.group(1)))
 
