@@ -335,11 +335,11 @@ if not token:
         """,
         height=0,
     )
-    st.markdown('<div class="rr-login-spacer"></div>', unsafe_allow_html=True)
+    
     _, card_col, _ = st.columns([1, 1.4, 1])
 
     with card_col:
-        st.markdown('<div class="rr-login-card">', unsafe_allow_html=True)
+    
         st.markdown('<div class="rr-login-heading">Login</div>', unsafe_allow_html=True)
         st.markdown('<div class="rr-login-sub">Retail Return Reasoning Agent</div>', unsafe_allow_html=True)
 
@@ -372,7 +372,6 @@ if not token:
                     do_login(login_data.get("access_token", ""))
                     st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
 
     st.stop()
 
