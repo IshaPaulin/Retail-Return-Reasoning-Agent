@@ -57,7 +57,13 @@ def _find_product_for_seller(product_id: str, seller_id: str):
     return product  # None if not found
 
 
-def _analyse_one_fast(product: dict, seller_id: str) -> dict | None:
+def _analyse_one_full(product: dict, seller_id: str) -> dict | None:
+    """
+    Runs the full scoring pipeline (fast_mode=False) so risk_score and
+    return_signal are consistent with the detail page, but skips Gemini
+    (include_gemini=False) to avoid burning API quota across every product
+    on every dashboard load. Gemini narrative is only fetched on the detail page.
+    """
     product_id = _product_id_from_record(product)
     if not product_id:
         return None
@@ -65,33 +71,45 @@ def _analyse_one_fast(product: dict, seller_id: str) -> dict | None:
         analysis = run_dashboard_analysis(
             product_id,
             seller_id,
-            fast_mode=True,
+            fast_mode=False,
             include_gemini=False,
         )
         return mongo_safe({
             "product_id": product_id,
             "product_name": _product_name_from_record(product, product_id),
             "risk_score": analysis.get("risk_score", 0),
-            "confidence": analysis.get("confidence", "low"),
             "return_signal": analysis.get("return_signal", "Low"),
             "primary_pattern": analysis.get("primary_pattern", "No strong pattern detected"),
             "summary": analysis.get("summary", "No summary available."),
             "root_cause": analysis.get("root_cause", ""),
             "return_rate": analysis.get("return_rate", 0),
             "trend": analysis.get("trend", "stable"),
+            "trend_growth_rate": analysis.get("trend_growth_rate", 0),
+            "worst_variant": analysis.get("worst_variant", {}),
+            "category_comparison": analysis.get("category_comparison", {}),
+            "score_components": analysis.get("score_components", {}),
+            "supporting_points": analysis.get("supporting_points", []),
+            "recommendations": analysis.get("recommendations", []),
+            "evidence": analysis.get("evidence", {}),
         })
-    except Exception:
+    except Exception as exc:
         return mongo_safe({
             "product_id": product_id,
             "product_name": _product_name_from_record(product, product_id),
             "risk_score": 0,
-            "confidence": "low",
             "return_signal": "Low",
             "primary_pattern": "Analysis unavailable",
-            "summary": "Could not analyse this product.",
+            "summary": f"Could not analyse this product: {exc}",
             "root_cause": "",
             "return_rate": 0,
             "trend": "stable",
+            "trend_growth_rate": 0,
+            "worst_variant": {},
+            "category_comparison": {},
+            "score_components": {},
+            "supporting_points": [],
+            "recommendations": [],
+            "evidence": {},
         })
 
 
@@ -110,7 +128,7 @@ def get_dashboard(current_seller_id: str = Depends(validate_token)):
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {
-            executor.submit(_analyse_one_fast, product, current_seller_id): product
+            executor.submit(_analyse_one_full, product, current_seller_id): product
             for product in products
         }
         response = []

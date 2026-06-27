@@ -92,11 +92,10 @@ def render_detail(d: dict):
     signal_color = {"High": "🔴", "Medium": "🟡", "Normal": "🟢", "Low": "🟢"}.get(signal, "⚪")
 
     st.markdown(f"## {d.get('product_name', 'Product')}")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     c1.metric("Return Signal", f"{signal_color} {signal}")
     c2.metric("Risk Score", d.get("risk_score", "—"))
     c3.metric("Return Rate", f"{round(d.get('return_rate', 0) * 100, 2)}%")
-    c4.metric("Confidence", d.get("confidence", "—").capitalize())
 
     trend = d.get("trend", "stable")
     trend_icon = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}.get(trend, "➡️")
