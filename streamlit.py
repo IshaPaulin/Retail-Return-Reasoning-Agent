@@ -6,6 +6,8 @@ from urllib.request import Request, urlopen
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_cookies_manager import EncryptedCookieManager
+import pandas as pd
+import plotly.express as px
 
 st.set_page_config(
     page_title="Retail Return Reasoning Agent",
@@ -143,6 +145,73 @@ def render_detail(d: dict):
             st.write(f"Relative risk: {round(cc.get('relative_risk', 0), 2)}x")
 
     st.divider()
+
+    # ─────────────────────────────────────────────
+    # GRAPH SECTION (FIXED)
+    # ─────────────────────────────────────────────
+
+    graphs = d.get("graphs") or {}
+
+    if graphs:
+        st.markdown("### Analytics Graphs")
+
+        tab1, tab2, tab3 = st.tabs([
+            "Return Trend", "Return Reasons", "SKU Breakdown"
+        ])
+
+        # ── 1. Return Trend ───────────────────────
+        with tab1:
+            trend = graphs.get("return_trend", {})
+            if trend:
+                df = pd.DataFrame({
+                    "Month": list(trend.keys()),
+                    "Returns": list(trend.values())
+                })
+
+                fig = px.line(df, x="Month", y="Returns", markers=True)
+                fig.update_traces(
+                    line_color="white",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No return trend data available.")
+
+        # ── 2. Return Reasons ─────────────────────
+        with tab2:
+            reasons = graphs.get("return_reasons", {})
+            if reasons:
+                df = pd.DataFrame({
+                    "Reason": list(reasons.keys()),
+                    "Returns": list(reasons.values())
+                })
+
+                fig = px.bar(df, x="Reason", y="Returns")
+                fig.update_traces(
+                    marker_color="white",
+                    width=0.2
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No return reason data available.")
+
+        # ── 3. SKU Breakdown ───────────────────────
+        with tab3:
+            sku = graphs.get("sku_breakdown", [])
+            if sku:
+                df = pd.DataFrame(sku)
+
+                if "variant" in df.columns and "returns" in df.columns:
+                    fig = px.bar(df, x="variant", y="returns")
+                    fig.update_traces(
+                        marker_color="white",
+                        width=0.2
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("SKU breakdown format is invalid.")
+            else:
+                st.info("No SKU breakdown data available.")
+
 
     evidence = d.get("evidence") or {}
     if evidence:

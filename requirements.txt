@@ -9,3 +9,5 @@ bcrypt
 langgraph
 langgraph-checkpoint-mongodb
 streamlit-cookies-manager
+pandas
+plotly

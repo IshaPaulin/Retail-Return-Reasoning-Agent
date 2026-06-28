@@ -650,6 +650,19 @@ def analyze_product_dashboard(
 
     recent_windows = _recent_window_counts(returns)
     trend_info = _monthly_return_trend(returns)
+    
+    graph_data = {
+    "return_trend": trend_info["series"],
+    "return_reasons": return_reasons,
+    "sku_breakdown": [
+        {
+            "variant": item.get("variant", "Unknown"),
+            "returns": item.get("return_count", 0),
+        }
+        for item in sku_breakdown
+    ],
+    "return_windows": recent_windows,
+}
 
     reason_severity, top_reason = _reason_severity_score(return_reasons)
     feedback_severity, feedback_keywords = _feedback_severity(feedback)
@@ -756,6 +769,7 @@ def analyze_product_dashboard(
             "anomalies": anomalies,
             "category_benchmark": category_benchmark,
         },
+        "graphs": graph_data,
     }
 
 
