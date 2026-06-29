@@ -7,7 +7,9 @@ google-genai
 streamlit
 bcrypt
 langgraph
-langgraph-checkpoint-mongodb
+#langgraph-checkpoint-mongodb
 streamlit-cookies-manager
 pandas
 plotly
+reportlab
+langchain-core

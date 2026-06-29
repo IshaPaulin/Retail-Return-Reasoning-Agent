@@ -189,7 +189,7 @@ def generate_json(prompt: str, system_instruction: str = "") -> dict:
     raise Exception("All Gemini API keys exhausted for generate_json.")
 
 
-def generate_with_tools(contents: list, tools_schema: list):
+def generate_with_tools(contents: list, tools_schema: list,system_instruction: str = ""):
     """
     Generation with Gemini native function calling enabled.
     Used by chatbot_pipeline.py agent_node.
@@ -199,7 +199,7 @@ def generate_with_tools(contents: list, tools_schema: list):
         try:
             client = get_client()
             tool_config = types.Tool(function_declarations=tools_schema)
-            config = types.GenerateContentConfig(tools=[tool_config])
+            config = types.GenerateContentConfig(tools=[tool_config],system_instruction=system_instruction if system_instruction else None,)
             return client.models.generate_content(
                 model=MODEL,
                 contents=contents,
