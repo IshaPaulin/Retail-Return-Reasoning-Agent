@@ -23,13 +23,6 @@ def mongo_safe(data):
     return data
 
 
-def _to_object_id(value: str):
-    try:
-        return ObjectId(value)
-    except Exception:
-        return value
-
-
 def _product_id_from_record(product: dict) -> str | None:
     # Schema PK is _id (ObjectId) — no separate product_id field
     record_id = product.get("_id")
@@ -44,13 +37,13 @@ def _product_name_from_record(product: dict, fallback_id: str) -> str:
 
 
 def _find_product_for_seller(product_id: str, seller_id: str):
-    seller_key = _to_object_id(seller_id)
+    seller_key = ObjectId(seller_id)
 
     # Only valid lookup: by _id (the actual PK per schema)
     product = products_collection.find_one(
         {
             "seller_id": seller_key,
-            "_id": _to_object_id(product_id),
+            "_id": ObjectId(product_id),
         },
         {"_id": 1, "product_name": 1},  # only fetch schema-valid fields
     )
@@ -115,7 +108,7 @@ def _analyse_one_full(product: dict, seller_id: str) -> dict | None:
 
 @router.get("")
 def get_dashboard(current_seller_id: str = Depends(validate_token)):
-    seller_key = _to_object_id(current_seller_id)
+    seller_key = ObjectId(current_seller_id)
     products = list(
         products_collection.find(
             {"seller_id": seller_key},
