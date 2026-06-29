@@ -9,6 +9,14 @@ from streamlit_cookies_manager import EncryptedCookieManager
 import pandas as pd
 import plotly.express as px
 
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
 st.set_page_config(
     page_title="Retail Return Reasoning Agent",
     page_icon="📦",
@@ -85,6 +93,190 @@ def login_api(base_url: str, username: str, password: str):
         method="POST",
         payload={"username": username, "password": password},
     )
+
+def generate_product_pdf(d: dict) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=2*cm,
+        leftMargin=2*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "Title", parent=styles["Title"],
+        fontSize=18, spaceAfter=6, textColor=colors.HexColor("#0f172a")
+    )
+    h2_style = ParagraphStyle(
+        "H2", parent=styles["Heading2"],
+        fontSize=13, spaceBefore=14, spaceAfter=4, textColor=colors.HexColor("#1e3a5f")
+    )
+    body_style = ParagraphStyle(
+        "Body", parent=styles["Normal"],
+        fontSize=10, spaceAfter=4, leading=14
+    )
+    caption_style = ParagraphStyle(
+        "Caption", parent=styles["Normal"],
+        fontSize=9, textColor=colors.HexColor("#64748b"), spaceAfter=2
+    )
+    bullet_style = ParagraphStyle(
+        "Bullet", parent=styles["Normal"],
+        fontSize=10, spaceAfter=3, leftIndent=12, leading=14
+    )
+
+    signal = d.get("return_signal", "Low")
+    signal_color = {"High": "#ef4444", "Medium": "#f59e0b", "Low": "#22c55e"}.get(signal, "#64748b")
+
+    elements = []
+
+    # Title
+    elements.append(Paragraph("Product Return Analysis Report", title_style))
+    elements.append(Paragraph(d.get("product_name", "Unknown Product"), h2_style))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e2e8f0")))
+    elements.append(Spacer(1, 0.3*cm))
+
+    # Key metrics table
+    return_rate = round(d.get("return_rate", 0) * 100, 2)
+    risk_score = d.get("risk_score", "—")
+    trend = d.get("trend", "stable").capitalize()
+    growth = d.get("trend_growth_rate", 0)
+    growth_str = f"{'+' if growth >= 0 else ''}{round(growth * 100, 1)}%"
+
+    metrics_data = [
+    ["Return Signal", "Risk Score", "Return Rate", "Trend"],
+    [signal, str(risk_score), f"{return_rate}%", f"{trend} ({growth_str})"]
+    ]
+    metrics_table = Table(metrics_data, colWidths=[4*cm, 3.5*cm, 3.5*cm, 4*cm])
+    metrics_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TEXTCOLOR", (0, 1), (0, 1), colors.HexColor(signal_color)),
+        ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
+    ]))
+    elements.append(metrics_table)
+    elements.append(Spacer(1, 0.4*cm))
+
+    # Summary
+    elements.append(Paragraph("Summary", h2_style))
+    elements.append(Paragraph(d.get("summary") or "No summary available.", body_style))
+
+    # Root Cause
+    elements.append(Paragraph("Root Cause", h2_style))
+    elements.append(Paragraph(d.get("root_cause") or "No root cause identified.", body_style))
+
+    # Supporting Evidence
+    points = d.get("supporting_points") or []
+    if points:
+        elements.append(Paragraph("Supporting Evidence", h2_style))
+        for point in points:
+            elements.append(Paragraph(f"• {point}", bullet_style))
+
+    # Recommendations
+    recs = d.get("recommendations") or []
+    if recs:
+        elements.append(Paragraph("Recommendations", h2_style))
+        for i, rec in enumerate(recs, 1):
+            elements.append(Paragraph(f"{i}. {rec}", bullet_style))
+
+    # Worst Variant
+    wv = d.get("worst_variant") or {}
+    if wv.get("variant") or wv.get("sku_id"):
+        elements.append(Paragraph("Worst Performing Variant", h2_style))
+        variant_name = wv.get("variant") or wv.get("sku_id", "—")
+        variant_rate = round(wv.get("return_rate", 0) * 100, 1)
+        variant_count = wv.get("return_count", 0)
+        elements.append(Paragraph(
+            f"{variant_name} — Return rate: {variant_rate}% ({variant_count} returns)",
+            body_style
+        ))
+
+    # Category Comparison
+    cc = d.get("category_comparison") or {}
+    if cc.get("category_name") and cc.get("category_name") != "Unknown":
+        elements.append(Paragraph("Category Comparison", h2_style))
+        elements.append(Paragraph(
+            f"Category: {cc.get('category_name')} | "
+            f"Avg return rate: {round(cc.get('average_return_rate', 0) * 100, 1)}% | "
+            f"Relative risk: {round(cc.get('relative_risk', 0), 2)}x",
+            body_style
+        ))
+
+    # Evidence
+    evidence = d.get("evidence") or {}
+    if evidence:
+        elements.append(Paragraph("Evidence Summary", h2_style))
+        elements.append(Paragraph(
+            f"Sales Units: {evidence.get('sales_units', '—')}  |  "
+            f"Total Returns: {evidence.get('return_count', '—')}  |  "
+            f"Feedback Count: {evidence.get('feedback_count', '—')}",
+            body_style
+        ))
+
+        recent = evidence.get("recent_windows") or {}
+        if any(recent.values()):
+            elements.append(Paragraph(
+                f"Returns (7d): {recent.get('7d', 0)}  |  "
+                f"Returns (30d): {recent.get('30d', 0)}  |  "
+                f"Returns (90d): {recent.get('90d', 0)}",
+                body_style
+            ))
+
+        reasons = evidence.get("return_reasons") or {}
+        if reasons:
+            elements.append(Paragraph("Return Reasons Breakdown:", caption_style))
+            for reason, count in sorted(reasons.items(), key=lambda x: x[1], reverse=True):
+                elements.append(Paragraph(f"• {reason}: {count}", bullet_style))
+
+        sku_breakdown = evidence.get("sku_breakdown") or []
+        if sku_breakdown:
+            elements.append(Paragraph("SKU Breakdown:", caption_style))
+            for sku in sku_breakdown:
+                variant = sku.get("variant") or sku.get("sku_id", "?")
+                elements.append(Paragraph(f"• {variant}: {sku.get('return_count', 0)} returns", bullet_style))
+
+    # Score Components
+    components_data = d.get("score_components") or {}
+    if components_data:
+        elements.append(Paragraph("Risk Score Breakdown", h2_style))
+        score_data = [["Component", "Points"]]
+        for key, val in components_data.items():
+            score_data.append([key.replace("_", " ").title(), str(val)])
+        score_table = Table(score_data, colWidths=[10*cm, 5*cm])
+        score_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (1, 0), (1, -1), "CENTER"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(score_table)
+
+    # Footer
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
+    elements.append(Paragraph(
+        f"Generated by Retail Return Reasoning Agent  |  Product ID: {d.get('product_id', '—')}",
+        caption_style
+    ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.read()
 
 
 # ── Detail renderer ────────────────────────────────────────────────────────────
@@ -248,6 +440,19 @@ def render_detail(d: dict):
         with st.expander("Score breakdown"):
             for key, val in components_data.items():
                 st.write(f"{key.replace('_', ' ').title()}: **{val} pts**")
+
+    
+    # PDF Download
+    st.markdown("---")
+    pdf_bytes = generate_product_pdf(d)
+    product_name_safe = (d.get("product_name") or "product").replace(" ", "_").replace("/", "-")
+    st.download_button(
+        label="⬇️ Download PDF Report",
+        data=pdf_bytes,
+        file_name=f"{product_name_safe}_return_report.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
 
 
 # ── Session state ──────────────────────────────────────────────────────────────
@@ -626,7 +831,7 @@ _chat_html = f"""
     #rr-chat-fab:hover {{ transform: scale(1.1); box-shadow: 0 6px 24px rgba(99,102,241,0.6); }}
     #rr-chat-panel {{
       position: fixed; bottom: 28px; right: 28px;
-      width: 340px; height: 520px;
+      width: 510px; height: 680px;
       background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1);
       border-radius: 16px; display: none; flex-direction: column;
       z-index: 999999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
