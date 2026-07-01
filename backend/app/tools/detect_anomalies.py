@@ -12,7 +12,7 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
     2. Concentrated reason clusters (using return_reason_category).
     """
     try:
-        # Convert incoming string IDs to ObjectIds for MongoDB matching
+
         prod_obj_id = ObjectId(product_id)
         sel_obj_id = ObjectId(seller_id)
     except Exception:
@@ -21,7 +21,6 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
             "details": ["Invalid product_id or seller_id format."]
         }
 
-    # FIX BUG 2: Resolve schema decoupling by fetching SKU IDs first
     sku_ids = [
         s["_id"] for s in db["sku"].find(
             {"product_id": prod_obj_id, "seller_id": sel_obj_id},
@@ -61,7 +60,6 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
             total_returns += 1
 
-        # FIX BUG 3: Use direct native Python datetime object returned from PyMongo
         date_obj = record.get("return_date")
         if isinstance(date_obj, datetime):
             try:
@@ -70,9 +68,6 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
             except Exception:
                 continue
 
-    # -------------------------------------------------------------------------
-    # PART 1: TIME-SERIES ANOMALY DETECTION (Spikes / Drops)
-    # -------------------------------------------------------------------------
     if len(weekly_counts) >= 4:
         counts = list(weekly_counts.values())
         mean_vol = sum(counts) / len(counts)
@@ -92,7 +87,6 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
                     details.append(
                         f"Unexpected Drop in {week}: Recorded {count} returns (Weekly average: {mean_vol:.1f}).")
 
-
     CLUSTER_THRESHOLD = 0.55
     for reason, count in reason_counts.items():
         concentration_ratio = count / total_returns
@@ -109,4 +103,4 @@ def detect_anomalies(product_id: str, seller_id: str) -> dict:
         "details": details
     }
 
-#print(detect_anomalies("6a2fe450e9ea3728609743c4","6a2fe450e9ea3728609743bf"))
+# print(detect_anomalies("6a2fe450e9ea3728609743c4","6a2fe450e9ea3728609743bf"))
