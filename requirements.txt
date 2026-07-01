@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pymongo
+python-dotenv
+python-jose[cryptography]
+google-genai
+streamlit
+bcrypt
+langgraph
+#langgraph-checkpoint-mongodb
+streamlit-cookies-manager
+pandas
+plotly
+reportlab
+langchain-core
