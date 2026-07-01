@@ -737,64 +737,6 @@ if st.session_state.show_product_detail and st.session_state.selected_product:
     st.session_state.selected_product = None
 
 
-# ── CHAT SECTION (unchanged) ───────────────────────────────────────────────────
-
-st.markdown("---")
-st.markdown("## Returns Analytics Chat")
-
-with st.form("chat_form", clear_on_submit=True):
-    chat_text = st.text_area(
-        "Ask your returns assistant", key="chat_input", height=120
-    )
-    submitted = st.form_submit_button("Send")
-
-    if submitted:
-        chat_text = chat_text.strip()
-        if chat_text:
-            chat_payload = {
-                "message": chat_text,
-                "history": [
-                    {
-                        "role": "user" if m["sender"] == "user" else "assistant",
-                        "content": m["text"],
-                    }
-                    for m in st.session_state.chat_messages
-                ],
-            }
-
-            response_data, response_error = api_request(
-                base_url,
-                "/chat",
-                method="POST",
-                token=token,
-                payload=chat_payload,
-            )
-
-            if response_error:
-                st.error(response_error)
-            elif response_data:
-                st.session_state.chat_messages.append({
-                    "sender": "user",
-                    "text": chat_text,
-                })
-                st.session_state.chat_messages.append({
-                    "sender": "assistant",
-                    "text": response_data.get("response", "No response."),
-                })
-                st.session_state.chat_conversation_id = response_data.get(
-                    "conversation_id", st.session_state.chat_conversation_id
-                )
-
-# Render chat history
-if st.session_state.chat_messages:
-    for message in st.session_state.chat_messages:
-        if message["sender"] == "user":
-            with st.chat_message("user"):
-                st.markdown(message["text"])
-        else:
-            with st.chat_message("assistant"):
-                st.markdown(message["text"])
-
 
 # ── FLOATING CHAT FAB (unchanged) ─────────────────────────────────────────────
 
